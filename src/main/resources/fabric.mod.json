@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "lootclient",
+  "version": "${version}",
+  "name": "Loot Client",
+  "description": "Utility client for anarchy servers: ESP, block ESP, base finder, FPS tweaks and more.",
+  "authors": ["spencer"],
+  "license": "MIT",
+  "icon": "assets/lootclient/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.loot.client.LootClient"]
+  },
+  "mixins": ["lootclient.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
