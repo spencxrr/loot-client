@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .bases [clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [clear], .save. Open the GUI with Right Shift.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())
@@ -112,6 +112,25 @@ public final class CommandManager {
                     ChatUtil.info(cm.remove(args[2]) ? "Removed macro " + args[2] : "No macro on " + args[2]);
                 } else {
                     throw new IllegalArgumentException("usage: .macro [list|add <key> <message>|remove <key>]");
+                }
+            }
+            case "config", "configs", "cfg" -> {
+                if (args.length < 2 || args[1].equalsIgnoreCase("list")) {
+                    var list = Config.profiles();
+                    ChatUtil.info(list.isEmpty() ? "No saved configs. .config save <name>" : "Configs: " + String.join(", ", list));
+                } else if (args.length >= 3) {
+                    String name = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+                    switch (args[1].toLowerCase(Locale.ROOT)) {
+                        case "save" -> {
+                            Config.saveProfile(name);
+                            ChatUtil.info("Saved config " + name);
+                        }
+                        case "load" -> ChatUtil.info(Config.loadProfile(name) ? "Loaded config " + name : "No config named " + name);
+                        case "delete", "del", "remove" -> ChatUtil.info(Config.deleteProfile(name) ? "Deleted config " + name : "No config named " + name);
+                        default -> throw new IllegalArgumentException("usage: .config [list|save|load|delete <name>]");
+                    }
+                } else {
+                    throw new IllegalArgumentException("usage: .config [list|save|load|delete <name>]");
                 }
             }
             case "save" -> {

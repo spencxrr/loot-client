@@ -43,6 +43,11 @@ public class ClickGuiScreen extends Screen {
     private static final Set<Module> EXPANDED = new HashSet<>();
     private static final Map<Object, Float> ANIM = new HashMap<>();
     private static Panel searchPanel;
+    private static Panel configPanel;
+    private String configName = "";
+    private boolean configFocused;
+    private List<String> profiles = List.of();
+    private long profilesAt;
     private static String query = "";
 
     private Panel dragging;
@@ -61,6 +66,9 @@ public class ClickGuiScreen extends Screen {
     /** Menu scale: MenuScale 100 renders like GUI scale 2 no matter what GUI scale the game uses. */
     private void updateScale() {
         var g = LootClient.modules().get(dev.loot.client.module.client.ClickGUI.class);
+        // Changing the scale while dragging its own slider moves the slider under the mouse,
+        // which made it jump around. Only apply the new size once the slider is let go.
+        if (sliding == g.scale && vw > 0) return;
         double factor = client != null ? client.getWindow().getScaleFactor() : 2;
         scale = (float) MathHelper.clamp(2.0 * g.scale.get() / 100.0 / factor, 0.25, 3.0);
         vw = (int) (super.width / scale);
@@ -68,20 +76,26 @@ public class ClickGuiScreen extends Screen {
     }
 
     private static final class Panel {
-        final Category category; // null for the search panel
+        final Category category; // null for the search and config panels
+        final boolean configs;
         int x, y;
         boolean open = true;
         int scroll;
         int contentHeight;
 
         Panel(Category category, int x, int y) {
+            this(category, x, y, false);
+        }
+
+        Panel(Category category, int x, int y, boolean configs) {
             this.category = category;
+            this.configs = configs;
             this.x = x;
             this.y = y;
         }
 
         String title() {
-            return category == null ? "Search" : category.displayName;
+            return configs ? "Configs" : category == null ? "Search" : category.displayName;
         }
     }
 
@@ -95,6 +109,8 @@ public class ClickGuiScreen extends Screen {
             }
             searchPanel = new Panel(null, x, GAP);
             PANELS.add(searchPanel);
+            configPanel = new Panel(null, x + WIDTH + GAP, GAP, true);
+            PANELS.add(configPanel);
         }
         openedAt = System.currentTimeMillis();
     }
@@ -147,7 +163,45 @@ public class ClickGuiScreen extends Screen {
         UI.drawText(ctx, "Loot Client " + LootClient.VERSION, 6, vh - 13, Theme.TEXT_FAINT);
     }
 
+    private List<String> profiles() {
+        if (System.currentTimeMillis() - profilesAt > 1000) {
+            profiles = Config.profiles();
+            profilesAt = System.currentTimeMillis();
+        }
+        return profiles;
+    }
+
+    private void renderConfigPanel(DrawContext ctx, Panel p, int mouseX, int mouseY) {
+        UI.roundRect(ctx, p.x, p.y, p.x + WIDTH, p.y + HEADER, 5, Theme.SURFACE_RAISED, true, !p.open);
+        UI.roundRect(ctx, p.x + 8, p.y + 8, p.x + 12, p.y + 12, 2, Theme.ACCENT);
+        UI.drawBold(ctx, p.title(), p.x + 18, p.y + 5, Theme.TEXT);
+        if (!p.open) return;
+        List<String> list = profiles();
+        int y = p.y + HEADER;
+        int h = 24 + list.size() * ROW + 4;
+        UI.roundRect(ctx, p.x, y, p.x + WIDTH, y + h, 5, Theme.SURFACE, false, true);
+        boolean focus = configFocused;
+        UI.roundRect(ctx, p.x + 6, y + 4, p.x + WIDTH - 6, y + 20, 4, focus ? Theme.ROW_HOVER : Theme.SETTINGS_BG);
+        String shown = configName.isEmpty() && !focus ? "Name, Enter to save" : configName + (focus && (System.currentTimeMillis() / 500) % 2 == 0 ? "|" : "");
+        UI.drawText(ctx, shown, p.x + 12, y + 8, configName.isEmpty() && !focus ? Theme.TEXT_FAINT : Theme.TEXT);
+        if (inside(mouseX, mouseY, p.x, y, WIDTH, 24)) hoverText = "Click, type a name, press Enter to save your current setup.";
+        y += 24;
+        for (String name : list) {
+            boolean hover = inside(mouseX, mouseY, p.x, y, WIDTH, ROW);
+            if (hover) {
+                ctx.fill(p.x, y, p.x + WIDTH, y + ROW, Theme.ROW_HOVER);
+                hoverText = "Left click to load, right click to delete.";
+            }
+            UI.drawText(ctx, name, p.x + 8, y + 4, hover ? Theme.ACCENT : Theme.TEXT);
+            y += ROW;
+        }
+    }
+
     private void renderPanel(DrawContext ctx, Panel p, int mouseX, int mouseY) {
+        if (p.configs) {
+            renderConfigPanel(ctx, p, mouseX, mouseY);
+            return;
+        }
         List<Module> mods = modulesFor(p);
         boolean search = p.category == null;
 
@@ -178,7 +232,7 @@ public class ClickGuiScreen extends Screen {
         int contentHeight = 0;
         for (Module m : mods) {
             contentHeight += ROW;
-            if (EXPANDED.contains(m)) contentHeight += m.getSettings().size() * SROW + 4;
+            if (EXPANDED.contains(m)) contentHeight += (m.getSettings().size() + 1) * SROW + 4;
         }
         p.contentHeight = contentHeight;
         int visible = Math.min(contentHeight, maxBody);
@@ -201,13 +255,18 @@ public class ClickGuiScreen extends Screen {
             if (m.getKey() != GLFW.GLFW_KEY_UNKNOWN && binding != m) {
                 UI.drawTextRight(ctx, keyName(m.getKey()), right - 20, y + 4, Theme.TEXT_FAINT);
             }
-            if (hover) hoverText = m.getDescription();
+            if (hover) hoverText = m.getDescription() + "  (right click: settings + keybind)";
             y += ROW;
 
             if (!EXPANDED.contains(m)) continue;
             int settingsTop = y;
-            ctx.fill(p.x, y, p.x + WIDTH, y + m.getSettings().size() * SROW + 4, Theme.SETTINGS_BG);
+            ctx.fill(p.x, y, p.x + WIDTH, y + (m.getSettings().size() + 1) * SROW + 4, Theme.SETTINGS_BG);
             y += 2;
+            UI.drawText(ctx, "Keybind", p.x + 10, y + 3, Theme.TEXT_MUTED);
+            String bind = binding == m ? "press a key" : m.getKey() == GLFW.GLFW_KEY_UNKNOWN ? "none" : keyName(m.getKey());
+            UI.drawTextRight(ctx, bind, p.x + WIDTH - 8, y + 3, binding == m ? Theme.ACCENT : Theme.TEXT);
+            if (inside(mouseX, mouseY, p.x, y, WIDTH, SROW)) hoverText = "Click, then press a key. Right click or Esc clears it.";
+            y += SROW;
             for (Setting<?> s : m.getSettings()) {
                 renderSetting(ctx, s, p.x + 10, y, WIDTH - 18);
                 if (inside(mouseX, mouseY, p.x, y, WIDTH, SROW)) hoverText = s.getDescription();
@@ -257,6 +316,7 @@ public class ClickGuiScreen extends Screen {
         int button = click.button();
         commitEdit();
         searchFocused = false;
+        configFocused = false;
 
         for (int i = PANELS.size() - 1; i >= 0; i--) {
             Panel p = PANELS.get(i);
@@ -273,6 +333,29 @@ public class ClickGuiScreen extends Screen {
             if (!p.open) continue;
 
             int y = p.y + HEADER;
+            if (p.configs) {
+                if (inside(mx, my, p.x, y, WIDTH, 24)) {
+                    configFocused = true;
+                    if (button == 1) configName = "";
+                    return true;
+                }
+                y += 24;
+                for (String name : profiles()) {
+                    if (inside(mx, my, p.x, y, WIDTH, ROW)) {
+                        if (button == 0) {
+                            Config.loadProfile(name);
+                            dev.loot.client.util.ChatUtil.info("Loaded config " + name);
+                        } else if (button == 1) {
+                            Config.deleteProfile(name);
+                            dev.loot.client.util.ChatUtil.info("Deleted config " + name);
+                        }
+                        profilesAt = 0;
+                        return true;
+                    }
+                    y += ROW;
+                }
+                continue;
+            }
             if (p.category == null) {
                 if (inside(mx, my, p.x, y, WIDTH, 24)) {
                     searchFocused = true;
@@ -291,7 +374,7 @@ public class ClickGuiScreen extends Screen {
                     switch (button) {
                         case 0 -> m.toggle();
                         case 1 -> {
-                            if (!EXPANDED.remove(m) && !m.getSettings().isEmpty()) EXPANDED.add(m);
+                            if (!EXPANDED.remove(m)) EXPANDED.add(m);
                         }
                         case 2 -> binding = m;
                         default -> {}
@@ -301,6 +384,12 @@ public class ClickGuiScreen extends Screen {
                 y += ROW;
                 if (!EXPANDED.contains(m)) continue;
                 y += 2;
+                if (inside(mx, my, p.x, y, WIDTH, SROW)) {
+                    if (button == 1) m.setKey(GLFW.GLFW_KEY_UNKNOWN);
+                    else binding = m;
+                    return true;
+                }
+                y += SROW;
                 for (Setting<?> s : m.getSettings()) {
                     if (inside(mx, my, p.x, y, WIDTH, SROW)) {
                         clickSetting(s, button, p.x + 10, WIDTH - 18);
@@ -384,6 +473,23 @@ public class ClickGuiScreen extends Screen {
             else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !editBuffer.isEmpty()) editBuffer = editBuffer.substring(0, editBuffer.length() - 1);
             return true;
         }
+        if (configFocused) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                if (!configName.isBlank()) {
+                    try {
+                        Config.saveProfile(configName);
+                        dev.loot.client.util.ChatUtil.info("Saved config " + configName.trim());
+                        configName = "";
+                        profilesAt = 0;
+                    } catch (IllegalArgumentException e) {
+                        dev.loot.client.util.ChatUtil.error(e.getMessage());
+                    }
+                }
+                configFocused = false;
+            } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) configFocused = false;
+            else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !configName.isEmpty()) configName = configName.substring(0, configName.length() - 1);
+            return true;
+        }
         if (searchFocused) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER) searchFocused = false;
             else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !query.isEmpty()) query = query.substring(0, query.length() - 1);
@@ -397,6 +503,10 @@ public class ClickGuiScreen extends Screen {
         if (!input.isValidChar()) return false;
         if (editing != null) {
             editBuffer += input.asString();
+            return true;
+        }
+        if (configFocused) {
+            if (configName.length() < 32) configName += input.asString();
             return true;
         }
         if (binding == null) {
