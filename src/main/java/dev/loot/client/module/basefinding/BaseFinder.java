@@ -70,6 +70,7 @@ public class BaseFinder extends Module {
         hits.clear();
     }
 
+    @Override
     public void onChunkLoad(WorldChunk chunk) {
         if (isEnabled()) enqueue(chunk.getPos());
     }

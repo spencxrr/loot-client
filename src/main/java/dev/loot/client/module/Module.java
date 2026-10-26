@@ -77,6 +77,12 @@ public abstract class Module {
         return false;
     }
 
+    /** Called for every chunk the client loads, enabled or not. */
+    public void onChunkLoad(net.minecraft.world.chunk.WorldChunk chunk) {}
+
+    /** Called for every chunk the client unloads, enabled or not. */
+    public void onChunkUnload(net.minecraft.world.chunk.WorldChunk chunk) {}
+
     /** Extra info shown next to the name in the HUD module list. */
     public String getInfo() {
         return null;

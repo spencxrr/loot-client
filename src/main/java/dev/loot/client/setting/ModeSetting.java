@@ -7,10 +7,16 @@ import java.util.List;
 
 public class ModeSetting extends Setting<String> {
     private final List<String> modes;
+    private Runnable onChange = () -> {};
 
     public ModeSetting(String name, String description, String defaultValue, String... modes) {
         super(name, description, defaultValue);
         this.modes = List.of(modes);
+    }
+
+    public ModeSetting onChange(Runnable onChange) {
+        this.onChange = onChange;
+        return this;
     }
 
     public List<String> getModes() {
@@ -25,6 +31,7 @@ public class ModeSetting extends Setting<String> {
         int i = modes.indexOf(value);
         int n = modes.size();
         value = modes.get(((i + (forward ? 1 : -1)) % n + n) % n);
+        onChange.run();
     }
 
     @Override
@@ -32,6 +39,7 @@ public class ModeSetting extends Setting<String> {
         for (String mode : modes) {
             if (mode.equalsIgnoreCase(input)) {
                 value = mode;
+                onChange.run();
                 return true;
             }
         }

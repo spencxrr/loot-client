@@ -74,10 +74,12 @@ public class BlockESP extends Module {
         if (queued.add(key)) queue.add(key);
     }
 
+    @Override
     public void onChunkLoad(WorldChunk chunk) {
         if (isEnabled()) enqueue(chunk.getPos());
     }
 
+    @Override
     public void onChunkUnload(WorldChunk chunk) {
         found.remove(chunk.getPos().toLong());
     }

@@ -56,11 +56,8 @@ public class LootClient implements ClientModInitializer {
 
         ClientSendMessageEvents.ALLOW_CHAT.register(message -> !CommandManager.handle(message));
 
-        ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
-            modules.get(BlockESP.class).onChunkLoad(chunk);
-            modules.get(BaseFinder.class).onChunkLoad(chunk);
-        });
-        ClientChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> modules.get(BlockESP.class).onChunkUnload(chunk));
+        ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> modules.fireChunkLoad(chunk));
+        ClientChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> modules.fireChunkUnload(chunk));
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> modules.get(BaseFinder.class).clearHits());
 
@@ -70,6 +67,7 @@ public class LootClient implements ClientModInitializer {
             Camera camera = mc.gameRenderer.getCamera();
             float tickDelta = mc.getRenderTickCounter().getTickProgress(true);
             Vec3d look = Vec3d.fromPolar(camera.getPitch(), camera.getYaw());
+            dev.loot.client.render.Projection.update(camera, tickDelta);
             Render3D r = new Render3D(camera.getCameraPos(), context.matrices().peek().getPositionMatrix(), look);
             for (Module m : modules.getModules()) {
                 if (!m.isEnabled()) continue;
@@ -82,10 +80,18 @@ public class LootClient implements ClientModInitializer {
             r.draw();
         });
 
+        WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, outline) ->
+            !modules.get(dev.loot.client.module.render.BlockOutline.class).isEnabled());
+
         HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (ctx, tickCounter) -> {
             float tickDelta = tickCounter.getTickProgress(true);
             for (Module m : modules.getModules()) {
-                if (m.isEnabled()) m.onRenderHud(ctx, tickDelta);
+                if (!m.isEnabled()) continue;
+                try {
+                    m.onRenderHud(ctx, tickDelta);
+                } catch (Exception e) {
+                    LOGGER.error("{} hud failed", m.getName(), e);
+                }
             }
         });
 

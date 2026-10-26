@@ -68,6 +68,13 @@ public class ModuleManager {
         register(new dev.loot.client.module.misc.WeatherNotifier());
         // basefinding
         register(new dev.loot.client.module.basefinding.BaseFinder());
+        register(new dev.loot.client.module.basefinding.BlockEntityDebug());
+        register(new dev.loot.client.module.basefinding.HoleESP());
+        register(new dev.loot.client.module.basefinding.LightFinder());
+        register(new dev.loot.client.module.basefinding.SusChunkFinder());
+        register(new dev.loot.client.module.basefinding.SusChunkV2());
+        register(new dev.loot.client.module.basefinding.SuspiciousESP());
+        register(new dev.loot.client.module.basefinding.TunnelBaseFinder());
         // render
         register(new dev.loot.client.module.render.BlockESP());
         register(new dev.loot.client.module.render.ESP());
@@ -131,6 +138,14 @@ public class ModuleManager {
             if (m.isEnabled() && safe(() -> m.onAttack(target))) cancel = true;
         }
         return cancel;
+    }
+
+    public void fireChunkLoad(net.minecraft.world.chunk.WorldChunk chunk) {
+        for (Module m : modules) safe(() -> { m.onChunkLoad(chunk); return false; });
+    }
+
+    public void fireChunkUnload(net.minecraft.world.chunk.WorldChunk chunk) {
+        for (Module m : modules) safe(() -> { m.onChunkUnload(chunk); return false; });
     }
 
     private static boolean safe(java.util.function.BooleanSupplier call) {
