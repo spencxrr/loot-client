@@ -68,7 +68,7 @@ public class SusChunkV2 extends ChunkScanModule<Integer> {
     public void onRender3D(Render3D r, float tickDelta) {
         for (var e : results.entrySet()) {
             float t = Math.min(1f, e.getValue() / 30f);
-            int color = dev.loot.client.gui.Theme.lerp(0xFFA3AEFF, 0xFFFF6B9A, t);
+            int color = dev.loot.client.gui.Theme.lerp(dev.loot.client.gui.Theme.ACCENT, 0xFFFF6B9A, t);
             ChunkHighlight.draw(r, new ChunkPos(e.getKey()), renderY.get(), color, 40);
         }
     }

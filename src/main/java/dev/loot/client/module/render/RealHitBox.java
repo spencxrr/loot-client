@@ -33,7 +33,7 @@ public class RealHitBox extends Module {
             if (e.squaredDistanceTo(mc.player) > maxSq) continue;
             Vec3d lerp = e.getLerpedPos(tickDelta);
             Box box = e.getBoundingBox().offset(lerp.subtract(e.getEntityPos())).expand(e.getTargetingMargin());
-            int color = e == aimed ? 0xFFA3AEFF : 0xB0FFFFFF;
+            int color = e == aimed ? dev.loot.client.gui.Theme.ACCENT : 0xB0FFFFFF;
             r.box(box, color, e == aimed ? 30 : 0);
             if (look.get()) {
                 Vec3d eye = lerp.add(0, e.getStandingEyeHeight(), 0);

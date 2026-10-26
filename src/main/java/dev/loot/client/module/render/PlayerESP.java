@@ -34,8 +34,8 @@ public class PlayerESP extends Module {
             if (friend) color = 0xFF5CE68A;
             else if (healthColor.get()) {
                 float hp = Math.min(1f, (p.getHealth() + p.getAbsorptionAmount()) / p.getMaxHealth());
-                color = dev.loot.client.gui.Theme.lerp(0xFFFF4D5E, 0xFFA3AEFF, hp);
-            } else color = 0xFFA3AEFF;
+                color = dev.loot.client.gui.Theme.lerp(0xFFFF4D5E, dev.loot.client.gui.Theme.ACCENT, hp);
+            } else color = dev.loot.client.gui.Theme.ACCENT;
             Vec3d lerp = p.getLerpedPos(tickDelta);
             Box box = p.getBoundingBox().offset(lerp.subtract(p.getEntityPos()));
             r.box(box, color, fill.getInt());

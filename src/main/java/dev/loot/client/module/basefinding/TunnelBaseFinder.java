@@ -91,6 +91,6 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         for (List<Tunnel> list : results.values())
             for (Tunnel t : list)
                 r.box(new Box(t.start().getX(), t.start().getY(), t.start().getZ(), t.end().getX() + 1, t.end().getY() + 2, t.end().getZ() + 1),
-                    0xFFA3AEFF, fill.getInt());
+                    dev.loot.client.gui.Theme.ACCENT, fill.getInt());
     }
 }

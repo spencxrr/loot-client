@@ -1,19 +1,47 @@
 package dev.loot.client.gui;
 
+import dev.loot.client.LootClient;
+import dev.loot.client.module.client.ClickGUI;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.text.Style;
 import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import org.joml.Matrix3x2fStack;
 
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
 /** Drawing helpers for the client's own look: TTF text and rounded shapes. */
 public final class UI {
     private UI() {}
 
-    private static final StyleSpriteSource.Font FONT = new StyleSpriteSource.Font(Identifier.of("lootclient", "ui"));
-    private static final StyleSpriteSource.Font FONT_BOLD = new StyleSpriteSource.Font(Identifier.of("lootclient", "ui_bold"));
+    private static final Map<String, StyleSpriteSource.Font> FONTS = new HashMap<>();
+
+    private static ClickGUI settings() {
+        return LootClient.modules() == null ? null : LootClient.modules().get(ClickGUI.class);
+    }
+
+    private static String fontName() {
+        ClickGUI g = settings();
+        return g == null ? "poppins" : g.font.get().toLowerCase(Locale.ROOT);
+    }
+
+    private static Style style(boolean bold) {
+        String name = fontName();
+        if (name.equals("minecraft")) return Style.EMPTY.withBold(bold);
+        String id = bold ? name + "_bold" : name;
+        return Style.EMPTY.withFont(FONTS.computeIfAbsent(id, k -> new StyleSpriteSource.Font(Identifier.of("lootclient", k))));
+    }
+
+    /** Text size multiplier from the Click GUI settings. */
+    public static float textScale() {
+        ClickGUI g = settings();
+        return g == null ? 1f : g.fontSize.getFloat() / 100f;
+    }
 
     /** Sub-pixel resolution used for rounded corners, so curves don't look blocky at GUI scale 2-3. */
     private static final int SUB = 2;
@@ -23,19 +51,19 @@ public final class UI {
     }
 
     public static Text text(String s) {
-        return Text.literal(s).styled(st -> st.withFont(FONT));
+        return Text.literal(s).setStyle(style(false));
     }
 
     public static Text bold(String s) {
-        return Text.literal(s).styled(st -> st.withFont(FONT_BOLD));
+        return Text.literal(s).setStyle(style(true));
     }
 
     public static int width(String s) {
-        return tr().getWidth(text(s));
+        return (int) Math.ceil(tr().getWidth(text(s)) * textScale());
     }
 
     public static int widthBold(String s) {
-        return tr().getWidth(bold(s));
+        return (int) Math.ceil(tr().getWidth(bold(s)) * textScale());
     }
 
     public static int height() {
@@ -43,11 +71,26 @@ public final class UI {
     }
 
     public static void drawText(DrawContext ctx, String s, int x, int y, int color) {
-        ctx.drawText(tr(), text(s), x, y, color, false);
+        draw(ctx, text(s), x, y, color);
     }
 
     public static void drawBold(DrawContext ctx, String s, int x, int y, int color) {
-        ctx.drawText(tr(), bold(s), x, y, color, false);
+        draw(ctx, bold(s), x, y, color);
+    }
+
+    private static void draw(DrawContext ctx, Text t, int x, int y, int color) {
+        float ts = textScale();
+        if (ts == 1f) {
+            ctx.drawText(tr(), t, x, y, color, false);
+            return;
+        }
+        // scale around the line's vertical middle so rows stay centered
+        Matrix3x2fStack m = ctx.getMatrices();
+        m.pushMatrix();
+        m.translate(x, y + 4.5f * (1 - ts));
+        m.scale(ts, ts);
+        ctx.drawText(tr(), t, 0, 0, color, false);
+        m.popMatrix();
     }
 
     public static void drawTextRight(DrawContext ctx, String s, int right, int y, int color) {

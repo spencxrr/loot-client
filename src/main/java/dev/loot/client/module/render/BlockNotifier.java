@@ -65,6 +65,6 @@ public class BlockNotifier extends ChunkScanModule<List<BlockPos>> {
     public void onRender3D(Render3D r, float tickDelta) {
         if (!highlight.get()) return;
         for (List<BlockPos> list : results.values())
-            for (BlockPos p : list) r.box(new Box(p), 0xFFA3AEFF, 40);
+            for (BlockPos p : list) r.box(new Box(p), dev.loot.client.gui.Theme.ACCENT, 40);
     }
 }

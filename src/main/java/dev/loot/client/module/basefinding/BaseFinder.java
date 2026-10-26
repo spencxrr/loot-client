@@ -159,7 +159,7 @@ public class BaseFinder extends Module {
             Text coords = Text.literal(x + ", " + z).setStyle(Style.EMPTY.withColor(Formatting.AQUA).withUnderline(true)
                 .withClickEvent(new ClickEvent.CopyToClipboard(x + " " + z)));
             ChatUtil.send(Text.literal("[").formatted(Formatting.DARK_GRAY)
-                .append(Text.literal("Loot").styled(s -> s.withColor(0xA3AEFF)))
+                .append(Text.literal("Loot").styled(s -> s.withColor(dev.loot.client.gui.Theme.ACCENT & 0xFFFFFF)))
                 .append(Text.literal("] ").formatted(Formatting.DARK_GRAY))
                 .append(Text.literal("Possible base (score " + hit.score + ") at ").formatted(Formatting.GRAY))
                 .append(coords)

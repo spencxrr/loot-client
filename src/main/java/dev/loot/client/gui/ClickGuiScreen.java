@@ -55,6 +55,17 @@ public class ClickGuiScreen extends Screen {
     private boolean searchFocused;
     private String hoverText;
     private long openedAt;
+    private float scale = 1f;
+    private int vw, vh;
+
+    /** Menu scale: MenuScale 100 renders like GUI scale 2 no matter what GUI scale the game uses. */
+    private void updateScale() {
+        var g = LootClient.modules().get(dev.loot.client.module.client.ClickGUI.class);
+        double factor = client != null ? client.getWindow().getScaleFactor() : 2;
+        scale = (float) MathHelper.clamp(2.0 * g.scale.get() / 100.0 / factor, 0.25, 3.0);
+        vw = (int) (super.width / scale);
+        vh = (int) (super.height / scale);
+    }
 
     private static final class Panel {
         final Category category; // null for the search panel
@@ -111,9 +122,17 @@ public class ClickGuiScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void render(DrawContext ctx, int rawMouseX, int rawMouseY, float delta) {
+        updateScale();
+        ctx.getMatrices().pushMatrix();
+        ctx.getMatrices().scale(scale, scale);
+        renderScaled(ctx, (int) (rawMouseX / scale), (int) (rawMouseY / scale));
+        ctx.getMatrices().popMatrix();
+    }
+
+    private void renderScaled(DrawContext ctx, int mouseX, int mouseY) {
         float fade = MathHelper.clamp((System.currentTimeMillis() - openedAt) / 150f, 0f, 1f);
-        ctx.fill(0, 0, width, height, (int) (0x99 * fade) << 24 | 0x06070D);
+        ctx.fill(0, 0, vw, vh, (int) (0x99 * fade) << 24 | 0x06070D);
         if (sliding != null) applySlider(mouseX);
         hoverText = null;
 
@@ -121,11 +140,11 @@ public class ClickGuiScreen extends Screen {
 
         if (hoverText != null) {
             int w = UI.width(hoverText) + 14;
-            int x = (width - w) / 2, y = height - 22;
+            int x = (vw - w) / 2, y = vh - 22;
             UI.roundRect(ctx, x, y, x + w, y + 15, 7, Theme.SURFACE_RAISED);
             UI.drawText(ctx, hoverText, x + 7, y + 3, Theme.TEXT_MUTED);
         }
-        UI.drawText(ctx, "Loot Client " + LootClient.VERSION, 6, height - 13, Theme.TEXT_FAINT);
+        UI.drawText(ctx, "Loot Client " + LootClient.VERSION, 6, vh - 13, Theme.TEXT_FAINT);
     }
 
     private void renderPanel(DrawContext ctx, Panel p, int mouseX, int mouseY) {
@@ -143,7 +162,7 @@ public class ClickGuiScreen extends Screen {
         if (!p.open) return;
 
         int bodyTop = p.y + HEADER;
-        int maxBody = Math.max(40, height - bodyTop - 30);
+        int maxBody = Math.max(40, vh - bodyTop - 30);
         int y = bodyTop;
 
         if (search) {
@@ -173,7 +192,7 @@ public class ClickGuiScreen extends Screen {
             float t = anim(m, m.isEnabled());
             if (hover) ctx.fill(p.x, y, p.x + WIDTH, y + ROW, Theme.ROW_HOVER);
             else if (t > 0) ctx.fill(p.x, y, p.x + WIDTH, y + ROW, Theme.lerp(0x00000000, Theme.ROW_ACTIVE, t));
-            if (t > 0) UI.roundRect(ctx, p.x, y + 3, p.x + 2, y + ROW - 3, 1, Theme.lerp(0x00A3AEFF, Theme.ACCENT, t));
+            if (t > 0) UI.roundRect(ctx, p.x, y + 3, p.x + 2, y + ROW - 3, 1, Theme.lerp(Theme.ACCENT & 0xFFFFFF, Theme.ACCENT, t));
 
             String label = binding == m ? "Press a key..." : m.getName();
             UI.drawText(ctx, label, p.x + 8, y + 4, Theme.lerp(Theme.TEXT, Theme.ACCENT, t));
@@ -233,7 +252,8 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
-        double mx = click.x(), my = click.y();
+        updateScale();
+        double mx = click.x() / scale, my = click.y() / scale;
         int button = click.button();
         commitEdit();
         searchFocused = false;
@@ -262,7 +282,7 @@ public class ClickGuiScreen extends Screen {
                 y += 24;
             }
             int listTop = y;
-            int visible = Math.min(p.contentHeight, Math.max(40, height - listTop - 30));
+            int visible = Math.min(p.contentHeight, Math.max(40, vh - listTop - 30));
             if (my < listTop || my >= listTop + visible) continue;
             y -= p.scroll;
 
@@ -321,21 +341,22 @@ public class ClickGuiScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double horizontal, double vertical) {
+    public boolean mouseScrolled(double rawX, double rawY, double horizontal, double vertical) {
+        double mx = rawX / scale, my = rawY / scale;
         for (Panel p : PANELS) {
-            if (p.open && inside(mx, my, p.x, p.y, WIDTH, height)) {
+            if (p.open && inside(mx, my, p.x, p.y, WIDTH, vh)) {
                 p.scroll -= (int) (vertical * 14);
                 return true;
             }
         }
-        return super.mouseScrolled(mx, my, horizontal, vertical);
+        return super.mouseScrolled(rawX, rawY, horizontal, vertical);
     }
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
         if (dragging != null) {
-            dragging.x = (int) click.x() - dragOffX;
-            dragging.y = (int) click.y() - dragOffY;
+            dragging.x = (int) (click.x() / scale) - dragOffX;
+            dragging.y = (int) (click.y() / scale) - dragOffY;
             return true;
         }
         return super.mouseDragged(click, dx, dy);

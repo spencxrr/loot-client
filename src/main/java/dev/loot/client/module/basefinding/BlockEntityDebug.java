@@ -59,7 +59,7 @@ public class BlockEntityDebug extends Module {
         for (BlockEntity be : found) {
             if (be.getPos().getSquaredDistance(mc.player.getEntityPos()) > maxSq) continue;
             int rgb = be.getCachedState().getBlock().getDefaultMapColor().color;
-            r.box(new Box(be.getPos()), 0xFF000000 | (rgb == 0 ? 0xA3AEFF : rgb), 30);
+            r.box(new Box(be.getPos()), 0xFF000000 | (rgb == 0 ? dev.loot.client.gui.Theme.ACCENT : rgb), 30);
         }
     }
 

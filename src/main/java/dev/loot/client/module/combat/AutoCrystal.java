@@ -121,7 +121,7 @@ public class AutoCrystal extends Module {
 
     @Override
     public void onRender3D(Render3D r, float tickDelta) {
-        if (render.get() && lastPlace != null) r.box(new Box(lastPlace), 0xFFA3AEFF, 50);
+        if (render.get() && lastPlace != null) r.box(new Box(lastPlace), dev.loot.client.gui.Theme.ACCENT, 50);
     }
 
     @Override

@@ -91,7 +91,7 @@ public class HoleESP extends ChunkScanModule<List<HoleESP.Hole>> {
                 if (h.bottom().getSquaredDistance(mc.player.getEntityPos()) > maxSq) continue;
                 if (shafts) {
                     r.box(new Box(h.bottom().getX(), h.bottom().getY(), h.bottom().getZ(),
-                        h.bottom().getX() + 1, h.bottom().getY() + h.depth(), h.bottom().getZ() + 1), 0xFFA3AEFF, fill.getInt());
+                        h.bottom().getX() + 1, h.bottom().getY() + h.depth(), h.bottom().getZ() + 1), dev.loot.client.gui.Theme.ACCENT, fill.getInt());
                 } else {
                     int color = h.bedrock() ? 0xFF5CE68A : 0xFFFFC05C;
                     r.box(new Box(h.bottom().getX(), h.bottom().getY(), h.bottom().getZ(),
