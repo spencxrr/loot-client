@@ -56,6 +56,7 @@ public final class InvUtil {
     public static int toHandlerSlot(int invIndex) {
         if (invIndex < 9) return 36 + invIndex;
         if (invIndex == 40) return 45;
+        if (invIndex >= 36 && invIndex <= 39) return 8 - (invIndex - 36); // boots..helmet -> slots 8..5
         return invIndex;
     }
 

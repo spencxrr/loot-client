@@ -15,7 +15,23 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew && ./gradlew build --no-daemon
+      - name: Build
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew build --no-daemon 2>&1 | tee build.log
+      - name: Report compile errors
+        if: failure()
+        run: |
+          # Turn javac errors into annotations so they show up on the run page and in the checks API.
+          awk '/\.java:[0-9]+: error: /{ if (msg) print msg; n=4; msg=$0; next } n>0 && msg { msg = msg " | " $0; n--; next } END { if (msg) print msg }' build.log | head -60 | while IFS= read -r line; do
+            file=$(echo "$line" | sed -E 's#^.*/(src/[^:]+\.java):([0-9]+): .*#\1#')
+            num=$(echo "$line" | sed -E 's#^.*\.java:([0-9]+): .*#\1#')
+            msg=$(echo "$line" | sed -E 's#^.*\.java:[0-9]+: error: ##')
+            echo "::error file=$file,line=$num::$msg"
+          done
+          tail -40 build.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' | sed 's/^/::error title=build tail::/'
+          echo
       - uses: actions/upload-artifact@v4
         with:
           name: loot-client

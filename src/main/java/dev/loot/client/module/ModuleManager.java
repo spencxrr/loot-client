@@ -16,7 +16,30 @@ public class ModuleManager {
 
     public ModuleManager() {
         // combat
+        register(new dev.loot.client.module.combat.AimAssist());
+        register(new dev.loot.client.module.combat.AnchorMacro());
+        register(new dev.loot.client.module.combat.AnchorOptimizer());
+        register(new dev.loot.client.module.combat.AutoCrystal());
+        register(new dev.loot.client.module.combat.AutoDoubleHand());
+        register(new dev.loot.client.module.combat.AutoHitCrystal());
+        register(new dev.loot.client.module.combat.AutoInvTotem());
+        register(new dev.loot.client.module.combat.AutoJumpReset());
+        register(new dev.loot.client.module.combat.AutoPot());
         register(new dev.loot.client.module.combat.AutoTotem());
+        register(new dev.loot.client.module.combat.CrystalOptimizer());
+        register(new dev.loot.client.module.combat.DoubleAnchor());
+        register(new dev.loot.client.module.combat.ElytraSwap());
+        register(new dev.loot.client.module.combat.HitBox());
+        register(new dev.loot.client.module.combat.HoverTotem());
+        register(new dev.loot.client.module.combat.MaceBomber());
+        register(new dev.loot.client.module.combat.MaceSwap());
+        register(new dev.loot.client.module.combat.NoHitDelay());
+        register(new dev.loot.client.module.combat.PotionRefill());
+        register(new dev.loot.client.module.combat.ShieldBreaker());
+        register(new dev.loot.client.module.combat.SpearSwap());
+        register(new dev.loot.client.module.combat.StaticHitBoxes());
+        register(new dev.loot.client.module.combat.TotemOffhand());
+        register(new dev.loot.client.module.combat.TriggerBot());
         register(new dev.loot.client.module.combat.Velocity());
         // misc
         register(new dev.loot.client.module.misc.AutoClicker());
