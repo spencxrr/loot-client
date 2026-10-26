@@ -27,7 +27,7 @@ public class ESP extends Module {
             if (!filter.test(e, mc.player)) continue;
             if (e.squaredDistanceTo(mc.player) > maxSq) continue;
             Vec3d lerp = e.getLerpedPos(tickDelta);
-            Box box = e.getBoundingBox().offset(lerp.subtract(e.getPos()));
+            Box box = e.getBoundingBox().offset(lerp.subtract(e.getEntityPos()));
             r.box(box, EntityFilter.color(e), fill.getInt());
             count++;
         }

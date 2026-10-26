@@ -9,8 +9,10 @@ import dev.loot.client.setting.BoolSetting;
 import dev.loot.client.setting.ModeSetting;
 import dev.loot.client.setting.NumberSetting;
 import dev.loot.client.setting.Setting;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
@@ -130,7 +132,9 @@ public class ClickGuiScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    public boolean mouseClicked(Click click, boolean doubled) {
+        double mx = click.x(), my = click.y();
+        int button = click.button();
         for (Panel p : PANELS) {
             if (inside(mx, my, p.x, p.y, WIDTH, HEADER)) {
                 if (button == 0) {
@@ -168,7 +172,7 @@ public class ClickGuiScreen extends Screen {
                 }
             }
         }
-        return super.mouseClicked(mx, my, button);
+        return super.mouseClicked(click, doubled);
     }
 
     private void clickSetting(Setting<?> s, int button, int x) {
@@ -187,31 +191,32 @@ public class ClickGuiScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+    public boolean mouseDragged(Click click, double dx, double dy) {
         if (dragging != null) {
-            dragging.x = (int) mx - dragOffX;
-            dragging.y = (int) my - dragOffY;
+            dragging.x = (int) click.x() - dragOffX;
+            dragging.y = (int) click.y() - dragOffY;
             return true;
         }
-        return super.mouseDragged(mx, my, button, dx, dy);
+        return super.mouseDragged(click, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(double mx, double my, int button) {
+    public boolean mouseReleased(Click click) {
         dragging = null;
         sliding = null;
-        return super.mouseReleased(mx, my, button);
+        return super.mouseReleased(click);
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    public boolean keyPressed(KeyInput input) {
+        int keyCode = input.key();
         if (binding != null) {
             boolean clear = keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE;
             binding.setKey(clear ? GLFW.GLFW_KEY_UNKNOWN : keyCode);
             binding = null;
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
 
     @Override

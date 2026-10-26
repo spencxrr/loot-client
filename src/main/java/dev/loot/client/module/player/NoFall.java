@@ -13,7 +13,7 @@ public class NoFall extends Module {
     @Override
     public void onTick() {
         if (mc.player.getAbilities().creativeMode || mc.player.isGliding()) return;
-        if (mc.player.fallDistance > 2.5f) {
+        if (mc.player.fallDistance > 2.5) {
             mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.OnGroundOnly(true, mc.player.horizontalCollision));
         }
     }

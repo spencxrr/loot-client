@@ -156,7 +156,7 @@ public class BaseFinder extends Module {
         int x = hit.pos.getCenterX(), z = hit.pos.getCenterZ();
         if (chat.get()) {
             Text coords = Text.literal(x + ", " + z).setStyle(Style.EMPTY.withColor(Formatting.AQUA).withUnderline(true)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, x + " " + z)));
+                .withClickEvent(new ClickEvent.CopyToClipboard(x + " " + z)));
             ChatUtil.send(Text.literal("[").formatted(Formatting.DARK_GRAY)
                 .append(Text.literal("Loot").formatted(Formatting.GOLD))
                 .append(Text.literal("] ").formatted(Formatting.DARK_GRAY))

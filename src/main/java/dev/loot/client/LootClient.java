@@ -13,11 +13,12 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Vec3d;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ public class LootClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        Render3D.init();
         modules = new ModuleManager();
         Config.load();
 
@@ -51,13 +53,13 @@ public class LootClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> modules.get(BaseFinder.class).clearHits());
 
-        WorldRenderEvents.LAST.register(context -> {
+        WorldRenderEvents.END_MAIN.register(context -> {
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc.player == null || mc.world == null) return;
-            Camera camera = context.camera();
-            float tickDelta = context.tickCounter().getTickDelta(true);
+            Camera camera = mc.gameRenderer.getCamera();
+            float tickDelta = mc.getRenderTickCounter().getTickProgress(true);
             Vec3d look = Vec3d.fromPolar(camera.getPitch(), camera.getYaw());
-            Render3D r = new Render3D(camera.getPos(), context.positionMatrix(), look);
+            Render3D r = new Render3D(camera.getCameraPos(), context.matrices().peek().getPositionMatrix(), look);
             for (Module m : modules.getModules()) {
                 if (!m.isEnabled()) continue;
                 try {
@@ -66,11 +68,11 @@ public class LootClient implements ClientModInitializer {
                     LOGGER.error("{} render failed", m.getName(), e);
                 }
             }
-            r.draw(1.5f);
+            r.draw();
         });
 
-        HudRenderCallback.EVENT.register((ctx, tickCounter) -> {
-            float tickDelta = tickCounter.getTickDelta(true);
+        HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (ctx, tickCounter) -> {
+            float tickDelta = tickCounter.getTickProgress(true);
             for (Module m : modules.getModules()) {
                 if (m.isEnabled()) m.onRenderHud(ctx, tickDelta);
             }

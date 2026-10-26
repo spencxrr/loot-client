@@ -22,7 +22,8 @@ public abstract class ClientPlayNetworkHandlerMixin {
         double h = velocity.horizontal.get() / 100.0;
         double v = velocity.vertical.get() / 100.0;
         if (h != 0 || v != 0) {
-            mc.player.setVelocity(packet.getVelocityX() * h, packet.getVelocityY() * v, packet.getVelocityZ() * h);
+            var kb = packet.getVelocity();
+            mc.player.setVelocity(kb.x * h, kb.y * v, kb.z * h);
         }
         ci.cancel();
     }

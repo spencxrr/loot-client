@@ -92,7 +92,7 @@ public class ModuleManager {
 
     /** Edge-triggered keybind polling, only while no screen is open. */
     private void pollKeybinds(MinecraftClient mc) {
-        long window = mc.getWindow().getHandle();
+        var window = mc.getWindow();
         boolean canToggle = mc.currentScreen == null;
         for (Module m : modules) {
             int key = m.getKey();

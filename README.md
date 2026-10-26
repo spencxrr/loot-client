@@ -1,11 +1,11 @@
 # Loot Client
 
-A Fabric utility client for Minecraft **1.21.4**, made for anarchy servers where every hack is allowed.
+A Fabric utility client for Minecraft **1.21.11**, made for anarchy servers where every hack is allowed.
 Don't use it on servers with rules against it; it has no anticheat bypasses and will get you banned there.
 
 ## Install
 
-1. Install [Fabric Loader](https://fabricmc.net/use/) for 1.21.4.
+1. Install [Fabric Loader](https://fabricmc.net/use/) for 1.21.11.
 2. Drop `loot-client-x.y.z.jar` and [Fabric API](https://modrinth.com/mod/fabric-api) into `.minecraft/mods`.
 3. For real FPS gains, also add [Sodium](https://modrinth.com/mod/sodium) and [Lithium](https://modrinth.com/mod/lithium). Loot Client doesn't touch chunk rendering, so it works alongside them.
 
