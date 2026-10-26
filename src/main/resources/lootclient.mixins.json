@@ -9,6 +9,7 @@
     "ClientPlayerInteractionManagerMixin",
     "ConnectScreenMixin",
     "EntityMixin",
+    "EntityRendererMixin",
     "GameRendererAccessor",
     "GameRendererMixin",
     "HandledScreenAccessor",

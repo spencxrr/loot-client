@@ -77,14 +77,24 @@ public class ModuleManager {
         register(new dev.loot.client.module.basefinding.TunnelBaseFinder());
         // render
         register(new dev.loot.client.module.render.BlockESP());
+        register(new dev.loot.client.module.render.BlockNotifier());
         register(new dev.loot.client.module.render.BlockOutline());
         register(new dev.loot.client.module.render.Crosshair());
-        register(new dev.loot.client.module.render.ESP());
         register(new dev.loot.client.module.render.Fullbright());
         register(new dev.loot.client.module.render.Hud());
+        register(new dev.loot.client.module.render.InventoryHud());
+        register(new dev.loot.client.module.render.JumpCircles());
+        register(new dev.loot.client.module.render.MobESP());
+        register(new dev.loot.client.module.render.MusicHud());
+        register(new dev.loot.client.module.render.NameTags());
         register(new dev.loot.client.module.render.NoRender());
+        register(new dev.loot.client.module.render.PearlTrajectory());
+        register(new dev.loot.client.module.render.PickupNotification());
+        register(new dev.loot.client.module.render.PlayerESP());
+        register(new dev.loot.client.module.render.RealHitBox());
         register(new dev.loot.client.module.render.StorageESP());
         register(new dev.loot.client.module.render.SwingSpeed());
+        register(new dev.loot.client.module.render.TargetHud());
         register(new dev.loot.client.module.render.Tracers());
         // client
         register(new dev.loot.client.module.client.ClickGUI());
