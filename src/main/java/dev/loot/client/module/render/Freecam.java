@@ -11,8 +11,9 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
 /**
- * Detaches the camera from your body so you can fly it around. Your player stays put
- * (movement keys are swallowed while this is on) and the server sees nothing.
+ * Detaches the camera from your body so you can fly it around. Your player stays frozen:
+ * no movement, sneaking or turning (see KeyboardInputMixin and EntityMixin), but you can still
+ * click and hold to attack, mine or use items where your body is looking.
  */
 public class Freecam extends Module {
     private final NumberSetting speed = add(new NumberSetting("Speed", "Blocks per tick.", 1, 0.1, 5, 0.1));
@@ -33,11 +34,6 @@ public class Freecam extends Module {
         pos = prevPos = mc.player.getEntityPos().add(0, mc.player.getStandingEyeHeight(), 0);
         yaw = prevYaw = mc.player.getYaw();
         pitch = prevPitch = mc.player.getPitch();
-    }
-
-    @Override
-    public void onDisable() {
-        KeyBinding.updatePressedStates();
     }
 
     private boolean held(KeyBinding kb) {
@@ -62,10 +58,6 @@ public class Freecam extends Module {
         Vec3d move = new Vec3d(dx, v, dz);
         if (move.lengthSquared() > 1) move = move.normalize();
         pos = pos.add(move.multiply(sp));
-
-        // keep the real player still
-        for (KeyBinding kb : new KeyBinding[]{o.forwardKey, o.backKey, o.leftKey, o.rightKey, o.jumpKey, o.sneakKey, o.sprintKey})
-            kb.setPressed(false);
     }
 
     /** Mouse input while active. Returns true when it was consumed. */

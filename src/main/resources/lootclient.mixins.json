@@ -16,6 +16,7 @@
     "GameRendererMixin",
     "HandledScreenAccessor",
     "InGameHudMixin",
+    "KeyboardInputMixin",
     "LivingEntityMixin",
     "MinecraftClientAccessor",
     "ParticleManagerMixin",
