@@ -45,7 +45,7 @@ public class BlockESP extends Module {
     private int total;
 
     public BlockESP() {
-        super("BlockESP", "Highlights chosen blocks (ores, spawners, anything) through walls.", Category.RENDER);
+        super("Block ESP", "Highlights chosen blocks (ores, spawners, anything) through walls.", Category.RENDER);
     }
 
     @Override

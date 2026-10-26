@@ -2,10 +2,12 @@ package dev.loot.client;
 
 import dev.loot.client.command.CommandManager;
 import dev.loot.client.config.Config;
+import dev.loot.client.config.FriendManager;
 import dev.loot.client.module.Module;
 import dev.loot.client.module.ModuleManager;
+import dev.loot.client.module.misc.AutoReconnect;
 import dev.loot.client.module.render.BlockESP;
-import dev.loot.client.module.world.BaseFinder;
+import dev.loot.client.module.basefinding.BaseFinder;
 import dev.loot.client.render.Render3D;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -30,18 +32,27 @@ public class LootClient implements ClientModInitializer {
         .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("dev");
 
     private static ModuleManager modules;
+    private static FriendManager friends;
 
     public static ModuleManager modules() {
         return modules;
     }
 
+    public static FriendManager friends() {
+        return friends;
+    }
+
     @Override
     public void onInitializeClient() {
         Render3D.init();
+        friends = new FriendManager();
         modules = new ModuleManager();
         Config.load();
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> modules.onTick());
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            modules.onTick();
+            modules.get(AutoReconnect.class).clientTick();
+        });
 
         ClientSendMessageEvents.ALLOW_CHAT.register(message -> !CommandManager.handle(message));
 

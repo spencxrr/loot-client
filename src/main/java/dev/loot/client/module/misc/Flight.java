@@ -1,4 +1,4 @@
-package dev.loot.client.module.movement;
+package dev.loot.client.module.misc;
 
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
@@ -13,7 +13,7 @@ public class Flight extends Module {
     private final NumberSetting speed = add(new NumberSetting("Speed", "Flight speed multiplier.", 1, 0.1, 10, 0.1));
 
     public Flight() {
-        super("Flight", "Fly like in creative.", Category.MOVEMENT);
+        super("Flight", "Fly like in creative.", Category.MISC);
     }
 
     @Override

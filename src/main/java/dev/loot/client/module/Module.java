@@ -4,6 +4,8 @@ import dev.loot.client.render.Render3D;
 import dev.loot.client.setting.Setting;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.entity.Entity;
+import net.minecraft.network.packet.Packet;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -59,6 +61,21 @@ public abstract class Module {
     public void onRender3D(Render3D r, float tickDelta) {}
 
     public void onRenderHud(DrawContext ctx, float tickDelta) {}
+
+    /** Called for every outgoing packet. Return true to cancel it. */
+    public boolean onPacketSend(Packet<?> packet) {
+        return false;
+    }
+
+    /** Called on the network thread for every incoming packet. Return true to drop it. */
+    public boolean onPacketReceive(Packet<?> packet) {
+        return false;
+    }
+
+    /** Called right before the player attacks an entity. Return true to cancel the attack. */
+    public boolean onAttack(Entity target) {
+        return false;
+    }
 
     /** Extra info shown next to the name in the HUD module list. */
     public String getInfo() {

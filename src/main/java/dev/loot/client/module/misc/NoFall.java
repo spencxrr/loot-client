@@ -1,4 +1,4 @@
-package dev.loot.client.module.player;
+package dev.loot.client.module.misc;
 
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
@@ -7,7 +7,7 @@ import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 /** Tells the server we're on the ground while falling, which resets fall distance server-side. */
 public class NoFall extends Module {
     public NoFall() {
-        super("NoFall", "Prevents fall damage.", Category.PLAYER);
+        super("No Fall", "Prevents fall damage.", Category.MISC);
     }
 
     @Override

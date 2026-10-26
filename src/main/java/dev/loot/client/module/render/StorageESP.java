@@ -38,7 +38,7 @@ public class StorageESP extends Module {
     private int timer;
 
     public StorageESP() {
-        super("StorageESP", "Highlights containers in loaded chunks.", Category.RENDER);
+        super("Storage ESP", "Highlights containers in loaded chunks.", Category.RENDER);
     }
 
     @Override

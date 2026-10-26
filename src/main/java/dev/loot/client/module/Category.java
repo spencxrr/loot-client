@@ -1,10 +1,10 @@
 package dev.loot.client.module;
 
 public enum Category {
+    COMBAT("Combat"),
+    MISC("Misc"),
+    BASEFINDING("BaseFinding"),
     RENDER("Render"),
-    WORLD("World"),
-    PLAYER("Player"),
-    MOVEMENT("Movement"),
     CLIENT("Client");
 
     public final String displayName;

@@ -1,4 +1,4 @@
-package dev.loot.client.module.movement;
+package dev.loot.client.module.misc;
 
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
@@ -12,7 +12,7 @@ public class Step extends Module {
     private final NumberSetting height = add(new NumberSetting("Height", "Blocks you can step up.", 1, 0.6, 4, 0.5));
 
     public Step() {
-        super("Step", "Walk up full blocks without jumping.", Category.MOVEMENT);
+        super("Step", "Walk up full blocks without jumping.", Category.MISC);
     }
 
     @Override

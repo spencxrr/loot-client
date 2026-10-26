@@ -1,4 +1,4 @@
-package dev.loot.client.module.world;
+package dev.loot.client.module.basefinding;
 
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
@@ -51,7 +51,7 @@ public class BaseFinder extends Module {
     private int refreshTimer;
 
     public BaseFinder() {
-        super("BaseFinder", "Flags chunks that look like player bases or stashes.", Category.WORLD);
+        super("Base Finder", "Flags chunks that look like player bases or stashes.", Category.BASEFINDING);
     }
 
     @Override
@@ -158,7 +158,7 @@ public class BaseFinder extends Module {
             Text coords = Text.literal(x + ", " + z).setStyle(Style.EMPTY.withColor(Formatting.AQUA).withUnderline(true)
                 .withClickEvent(new ClickEvent.CopyToClipboard(x + " " + z)));
             ChatUtil.send(Text.literal("[").formatted(Formatting.DARK_GRAY)
-                .append(Text.literal("Loot").formatted(Formatting.GOLD))
+                .append(Text.literal("Loot").styled(s -> s.withColor(0xA3AEFF)))
                 .append(Text.literal("] ").formatted(Formatting.DARK_GRAY))
                 .append(Text.literal("Possible base (score " + hit.score + ") at ").formatted(Formatting.GRAY))
                 .append(coords)

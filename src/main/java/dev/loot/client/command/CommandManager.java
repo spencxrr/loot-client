@@ -3,7 +3,7 @@ package dev.loot.client.command;
 import dev.loot.client.LootClient;
 import dev.loot.client.config.Config;
 import dev.loot.client.module.Module;
-import dev.loot.client.module.world.BaseFinder;
+import dev.loot.client.module.basefinding.BaseFinder;
 import dev.loot.client.setting.Setting;
 import dev.loot.client.util.ChatUtil;
 import net.minecraft.client.util.InputUtil;
@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .bases [clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .bases [clear], .save. Open the GUI with Right Shift.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())
@@ -86,6 +86,17 @@ public final class CommandManager {
                     ChatUtil.info("No bases flagged this session.");
                 } else {
                     bf.describeHits().forEach(ChatUtil::info);
+                }
+            }
+            case "friend", "f" -> {
+                if (args.length < 2 || args[1].equalsIgnoreCase("list")) {
+                    ChatUtil.info("Friends: " + (LootClient.friends().all().isEmpty() ? "none" : String.join(", ", LootClient.friends().all())));
+                } else if (args.length >= 3 && args[1].equalsIgnoreCase("add")) {
+                    ChatUtil.info(LootClient.friends().add(args[2]) ? "Added " + args[2] : args[2] + " is already a friend");
+                } else if (args.length >= 3 && (args[1].equalsIgnoreCase("remove") || args[1].equalsIgnoreCase("del"))) {
+                    ChatUtil.info(LootClient.friends().remove(args[2]) ? "Removed " + args[2] : args[2] + " isn't a friend");
+                } else {
+                    throw new IllegalArgumentException("usage: .friend [list|add <name>|remove <name>]");
                 }
             }
             case "save" -> {

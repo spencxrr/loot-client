@@ -1,20 +1,5 @@
 package dev.loot.client.module;
 
-import dev.loot.client.module.movement.Flight;
-import dev.loot.client.module.movement.Sprint;
-import dev.loot.client.module.movement.Step;
-import dev.loot.client.module.player.AutoTotem;
-import dev.loot.client.module.player.NoFall;
-import dev.loot.client.module.player.Velocity;
-import dev.loot.client.module.render.BlockESP;
-import dev.loot.client.module.render.ClickGUI;
-import dev.loot.client.module.render.ESP;
-import dev.loot.client.module.render.Fullbright;
-import dev.loot.client.module.render.Hud;
-import dev.loot.client.module.render.NoRender;
-import dev.loot.client.module.render.StorageESP;
-import dev.loot.client.module.render.Tracers;
-import dev.loot.client.module.world.BaseFinder;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
@@ -30,25 +15,46 @@ public class ModuleManager {
     private final Map<Integer, Boolean> keyStates = new HashMap<>();
 
     public ModuleManager() {
-        // Render
-        register(new ClickGUI());
-        register(new Hud());
-        register(new Fullbright());
-        register(new NoRender());
-        register(new ESP());
-        register(new Tracers());
-        register(new StorageESP());
-        register(new BlockESP());
-        // World
-        register(new BaseFinder());
-        // Player
-        register(new AutoTotem());
-        register(new NoFall());
-        register(new Velocity());
-        // Movement
-        register(new Sprint());
-        register(new Step());
-        register(new Flight());
+        // combat
+        register(new dev.loot.client.module.combat.AutoTotem());
+        register(new dev.loot.client.module.combat.Velocity());
+        // misc
+        register(new dev.loot.client.module.misc.AutoClicker());
+        register(new dev.loot.client.module.misc.AutoEat());
+        register(new dev.loot.client.module.misc.AutoFirework());
+        register(new dev.loot.client.module.misc.AutoLog());
+        register(new dev.loot.client.module.misc.AutoLoot());
+        register(new dev.loot.client.module.misc.AutoMine());
+        register(new dev.loot.client.module.misc.AutoReconnect());
+        register(new dev.loot.client.module.misc.AutoRespawn());
+        register(new dev.loot.client.module.misc.AutoTool());
+        register(new dev.loot.client.module.misc.AutoTpa());
+        register(new dev.loot.client.module.misc.AutoWalk());
+        register(new dev.loot.client.module.misc.CordSnapper());
+        register(new dev.loot.client.module.misc.ElytraGlide());
+        register(new dev.loot.client.module.misc.FakePlayer());
+        register(new dev.loot.client.module.misc.FastPlace());
+        register(new dev.loot.client.module.misc.Flight());
+        register(new dev.loot.client.module.misc.KeyPearl());
+        register(new dev.loot.client.module.misc.KeyWindCharge());
+        register(new dev.loot.client.module.misc.NameProtect());
+        register(new dev.loot.client.module.misc.NoFall());
+        register(new dev.loot.client.module.misc.SkinProtect());
+        register(new dev.loot.client.module.misc.Sprint());
+        register(new dev.loot.client.module.misc.Step());
+        register(new dev.loot.client.module.misc.WeatherNotifier());
+        // basefinding
+        register(new dev.loot.client.module.basefinding.BaseFinder());
+        // render
+        register(new dev.loot.client.module.render.BlockESP());
+        register(new dev.loot.client.module.render.ESP());
+        register(new dev.loot.client.module.render.Fullbright());
+        register(new dev.loot.client.module.render.Hud());
+        register(new dev.loot.client.module.render.NoRender());
+        register(new dev.loot.client.module.render.StorageESP());
+        register(new dev.loot.client.module.render.Tracers());
+        // client
+        register(new dev.loot.client.module.client.ClickGUI());
     }
 
     private void register(Module module) {
@@ -61,7 +67,8 @@ public class ModuleManager {
     }
 
     public List<Module> getModules(Category category) {
-        return modules.stream().filter(m -> m.getCategory() == category).toList();
+        return modules.stream().filter(m -> m.getCategory() == category)
+            .sorted(java.util.Comparator.comparing(m -> m.getName().toLowerCase(java.util.Locale.ROOT))).toList();
     }
 
     @SuppressWarnings("unchecked")
@@ -69,11 +76,47 @@ public class ModuleManager {
         return (T) byClass.get(clazz);
     }
 
+    /** Looks a module up by name, ignoring case and spaces ("autocrystal" finds "Auto Crystal"). */
     public Module get(String name) {
+        String key = name.replace(" ", "").replace("_", "");
         for (Module m : modules) {
-            if (m.getName().equalsIgnoreCase(name)) return m;
+            if (m.getName().replace(" ", "").equalsIgnoreCase(key)) return m;
         }
         return null;
+    }
+
+    public boolean firePacketSend(net.minecraft.network.packet.Packet<?> packet) {
+        boolean cancel = false;
+        for (Module m : modules) {
+            if (m.isEnabled() && safe(() -> m.onPacketSend(packet))) cancel = true;
+        }
+        return cancel;
+    }
+
+    public boolean firePacketReceive(net.minecraft.network.packet.Packet<?> packet) {
+        boolean cancel = false;
+        for (Module m : modules) {
+            if (m.isEnabled() && safe(() -> m.onPacketReceive(packet))) cancel = true;
+        }
+        return cancel;
+    }
+
+    public boolean fireAttack(net.minecraft.entity.Entity target) {
+        dev.loot.client.util.Targets.markTarget(target);
+        boolean cancel = false;
+        for (Module m : modules) {
+            if (m.isEnabled() && safe(() -> m.onAttack(target))) cancel = true;
+        }
+        return cancel;
+    }
+
+    private static boolean safe(java.util.function.BooleanSupplier call) {
+        try {
+            return call.getAsBoolean();
+        } catch (Exception e) {
+            dev.loot.client.LootClient.LOGGER.error("Module hook failed", e);
+            return false;
+        }
     }
 
     public boolean isEnabled(Class<? extends Module> clazz) {
@@ -86,7 +129,12 @@ public class ModuleManager {
         pollKeybinds(mc);
         if (mc.player == null || mc.world == null) return;
         for (Module m : modules) {
-            if (m.isEnabled()) m.onTick();
+            if (!m.isEnabled()) continue;
+            try {
+                m.onTick();
+            } catch (Exception e) {
+                dev.loot.client.LootClient.LOGGER.error("{} tick failed", m.getName(), e);
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-package dev.loot.client.module.render;
+package dev.loot.client.module.client;
 
 import dev.loot.client.gui.ClickGuiScreen;
 import dev.loot.client.module.Category;
@@ -7,7 +7,7 @@ import org.lwjgl.glfw.GLFW;
 
 public class ClickGUI extends Module {
     public ClickGUI() {
-        super("ClickGUI", "Opens the module menu.", Category.CLIENT);
+        super("Click GUI", "Opens the module menu.", Category.CLIENT);
         setKey(GLFW.GLFW_KEY_RIGHT_SHIFT);
     }
 

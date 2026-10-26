@@ -1,7 +1,7 @@
 package dev.loot.client.mixin;
 
 import dev.loot.client.LootClient;
-import dev.loot.client.module.player.Velocity;
+import dev.loot.client.module.combat.Velocity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;

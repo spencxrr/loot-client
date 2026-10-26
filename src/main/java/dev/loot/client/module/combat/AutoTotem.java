@@ -1,4 +1,4 @@
-package dev.loot.client.module.player;
+package dev.loot.client.module.combat;
 
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
@@ -14,7 +14,7 @@ public class AutoTotem extends Module {
     private int cooldown;
 
     public AutoTotem() {
-        super("AutoTotem", "Keeps a totem of undying in your offhand.", Category.PLAYER);
+        super("Auto Totem", "Keeps a totem of undying in your offhand.", Category.COMBAT);
     }
 
     @Override

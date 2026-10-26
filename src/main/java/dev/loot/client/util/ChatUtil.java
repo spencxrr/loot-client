@@ -10,7 +10,7 @@ public final class ChatUtil {
 
     private static MutableText prefix() {
         return Text.literal("[").formatted(Formatting.DARK_GRAY)
-            .append(Text.literal("Loot").formatted(Formatting.GOLD))
+            .append(Text.literal("Loot").styled(s -> s.withColor(0xA3AEFF)))
             .append(Text.literal("] ").formatted(Formatting.DARK_GRAY));
     }
 

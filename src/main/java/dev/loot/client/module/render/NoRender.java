@@ -11,6 +11,6 @@ public class NoRender extends Module {
     public final BoolSetting hurtCam = add(new BoolSetting("HurtCam", "No screen shake when taking damage.", true));
 
     public NoRender() {
-        super("NoRender", "Skips expensive or annoying rendering.", Category.RENDER);
+        super("No Render", "Skips expensive or annoying rendering.", Category.RENDER);
     }
 }
