@@ -52,6 +52,14 @@ public class BlockListSetting extends Setting<Set<Block>> {
         return true;
     }
 
+    /** Adds the block if missing, removes it if present. */
+    public void toggle(Block block) {
+        Set<Block> copy = new LinkedHashSet<>(value);
+        if (!copy.remove(block)) copy.add(block);
+        value = copy;
+        onChange.run();
+    }
+
     @Override
     public String display() {
         if (value.isEmpty()) return "(none)";

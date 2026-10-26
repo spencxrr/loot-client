@@ -306,7 +306,7 @@ public class ClickGuiScreen extends Screen {
             if (UI.width(v) > w / 2) v = "..." + v.substring(Math.max(0, v.length() - 10));
             UI.drawTextRight(ctx, v, x + w, y + 3, editing == str ? Theme.ACCENT : Theme.TEXT);
         } else {
-            String v = s instanceof BlockListSetting b ? b.get().size() + " blocks" : s.display();
+            String v = s instanceof BlockListSetting b ? b.get().size() + " blocks  edit" : s.display();
             UI.drawTextRight(ctx, v, x + w, y + 3, Theme.ACCENT);
         }
     }
@@ -416,7 +416,7 @@ public class ClickGuiScreen extends Screen {
             editing = str;
             editBuffer = str.get();
         }
-        // Block lists are edited with .set <module> Blocks add <id>.
+        else if (s instanceof BlockListSetting list) client.setScreen(new BlockPickerScreen(this, list));
     }
 
     private void applySlider(double mx) {

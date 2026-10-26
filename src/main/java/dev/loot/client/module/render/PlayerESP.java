@@ -14,6 +14,7 @@ public class PlayerESP extends Module {
     private final NumberSetting range = add(new NumberSetting("Range", "Max distance in blocks.", 512, 16, 2048, 16));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity, 0 for outline only.", 35, 0, 255, 5));
     private final BoolSetting friends = add(new BoolSetting("Friends", "Show friends too, in green.", true));
+    private final BoolSetting tracers = add(new BoolSetting("Tracers", "Lines from your crosshair to each player.", true));
     private final BoolSetting healthColor = add(new BoolSetting("HealthColor", "Tint enemies from lavender (full) to red (low).", true));
 
     private int count;
@@ -39,6 +40,7 @@ public class PlayerESP extends Module {
             Vec3d lerp = p.getLerpedPos(tickDelta);
             Box box = p.getBoundingBox().offset(lerp.subtract(p.getEntityPos()));
             r.box(box, color, fill.getInt());
+            if (tracers.get()) r.line(r.crosshair(), box.getCenter(), color);
             count++;
         }
     }
