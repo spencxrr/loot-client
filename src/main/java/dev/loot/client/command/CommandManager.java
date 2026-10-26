@@ -3,7 +3,7 @@ package dev.loot.client.command;
 import dev.loot.client.LootClient;
 import dev.loot.client.config.Config;
 import dev.loot.client.module.Module;
-import dev.loot.client.module.basefinding.BaseFinder;
+import dev.loot.client.module.basefinding.SusChunkFinder;
 import dev.loot.client.setting.Setting;
 import dev.loot.client.util.ChatUtil;
 import net.minecraft.client.util.InputUtil;
@@ -78,12 +78,12 @@ public final class CommandManager {
                 Config.save();
             }
             case "bases" -> {
-                BaseFinder bf = LootClient.modules().get(BaseFinder.class);
+                SusChunkFinder bf = LootClient.modules().get(SusChunkFinder.class);
                 if (args.length > 1 && args[1].equalsIgnoreCase("clear")) {
                     bf.clearHits();
-                    ChatUtil.info("Cleared base hits.");
+                    ChatUtil.info("Cleared sus chunks.");
                 } else if (bf.describeHits().isEmpty()) {
-                    ChatUtil.info("No bases flagged this session.");
+                    ChatUtil.info("No sus chunks found yet.");
                 } else {
                     bf.describeHits().forEach(ChatUtil::info);
                 }

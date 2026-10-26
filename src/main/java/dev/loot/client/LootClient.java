@@ -7,7 +7,7 @@ import dev.loot.client.module.Module;
 import dev.loot.client.module.ModuleManager;
 import dev.loot.client.module.misc.AutoReconnect;
 import dev.loot.client.module.render.BlockESP;
-import dev.loot.client.module.basefinding.BaseFinder;
+import dev.loot.client.module.basefinding.SusChunkFinder;
 import dev.loot.client.render.Render3D;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -59,7 +59,7 @@ public class LootClient implements ClientModInitializer {
         ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> modules.fireChunkLoad(chunk));
         ClientChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> modules.fireChunkUnload(chunk));
 
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> modules.get(BaseFinder.class).clearHits());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> modules.get(SusChunkFinder.class).clearHits());
 
         WorldRenderEvents.END_MAIN.register(context -> {
             MinecraftClient mc = MinecraftClient.getInstance();

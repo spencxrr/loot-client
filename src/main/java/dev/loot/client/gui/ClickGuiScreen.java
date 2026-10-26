@@ -63,14 +63,16 @@ public class ClickGuiScreen extends Screen {
     private float scale = 1f;
     private int vw, vh;
 
-    /** Menu scale: MenuScale 100 renders like GUI scale 2 no matter what GUI scale the game uses. */
+    /**
+     * The menu lays itself out on a virtual screen 540 units tall (1080p at GUI scale 2) and is
+     * scaled to fit the real window, so it looks the same whatever GUI scale or resolution you use.
+     */
     private void updateScale() {
         var g = LootClient.modules().get(dev.loot.client.module.client.ClickGUI.class);
         // Changing the scale while dragging its own slider moves the slider under the mouse,
         // which made it jump around. Only apply the new size once the slider is let go.
         if (sliding == g.scale && vw > 0) return;
-        double factor = client != null ? client.getWindow().getScaleFactor() : 2;
-        scale = (float) MathHelper.clamp(2.0 * g.scale.get() / 100.0 / factor, 0.25, 3.0);
+        scale = (float) MathHelper.clamp(super.height * g.scale.get() / (540.0 * 100.0), 0.1, 4.0);
         vw = (int) (super.width / scale);
         vh = (int) (super.height / scale);
     }

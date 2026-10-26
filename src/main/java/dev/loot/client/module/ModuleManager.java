@@ -67,12 +67,10 @@ public class ModuleManager {
         register(new dev.loot.client.module.misc.Step());
         register(new dev.loot.client.module.misc.WeatherNotifier());
         // basefinding
-        register(new dev.loot.client.module.basefinding.BaseFinder());
         register(new dev.loot.client.module.basefinding.BlockEntityDebug());
         register(new dev.loot.client.module.basefinding.HoleESP());
         register(new dev.loot.client.module.basefinding.LightFinder());
         register(new dev.loot.client.module.basefinding.SusChunkFinder());
-        register(new dev.loot.client.module.basefinding.SusChunkV2());
         register(new dev.loot.client.module.basefinding.SuspiciousESP());
         register(new dev.loot.client.module.basefinding.TunnelBaseFinder());
         // render

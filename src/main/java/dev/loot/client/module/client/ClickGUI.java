@@ -15,7 +15,7 @@ public class ClickGUI extends Module {
     public final ModeSetting font = add(new ModeSetting("Font", "Font used by the menu and HUD.", "Poppins",
         "Poppins", "Outfit", "Manrope", "FiraSans", "Ubuntu", "Minecraft"));
     public final NumberSetting fontSize = add(new NumberSetting("FontSize", "Text size in percent.", 100, 70, 130, 5));
-    public final NumberSetting scale = add(new NumberSetting("MenuScale", "Menu size. 100 looks like GUI scale 2 on any screen.", 100, 50, 200, 5));
+    public final NumberSetting scale = add(new NumberSetting("MenuSize", "Menu size in percent. 100 fits every panel on screen at any resolution.", 100, 60, 150, 5));
 
     public ClickGUI() {
         super("Click GUI", "Opens the module menu. Right click it for theme, font and size.", Category.CLIENT);
