@@ -76,10 +76,14 @@ public class ModuleManager {
         register(new dev.loot.client.module.basefinding.SuspiciousESP());
         register(new dev.loot.client.module.basefinding.TunnelBaseFinder());
         // render
+        register(new dev.loot.client.module.render.AspectRatio());
         register(new dev.loot.client.module.render.BlockESP());
         register(new dev.loot.client.module.render.BlockNotifier());
         register(new dev.loot.client.module.render.BlockOutline());
         register(new dev.loot.client.module.render.Crosshair());
+        register(new dev.loot.client.module.render.Fog());
+        register(new dev.loot.client.module.render.FreeLook());
+        register(new dev.loot.client.module.render.Freecam());
         register(new dev.loot.client.module.render.Fullbright());
         register(new dev.loot.client.module.render.Hud());
         register(new dev.loot.client.module.render.InventoryHud());
@@ -97,7 +101,10 @@ public class ModuleManager {
         register(new dev.loot.client.module.render.TargetHud());
         register(new dev.loot.client.module.render.Tracers());
         // client
+        register(new dev.loot.client.module.client.ChatMacro());
         register(new dev.loot.client.module.client.ClickGUI());
+        register(new dev.loot.client.module.client.DiscordPresence());
+        register(new dev.loot.client.module.client.Radio());
     }
 
     private void register(Module module) {

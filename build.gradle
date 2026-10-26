@@ -10,11 +10,19 @@ base {
     archivesName = project.archives_base_name
 }
 
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // MP3 decoding for Radio, bundled into the jar
+    implementation "javazoom:jlayer:1.0.1"
+    include "javazoom:jlayer:1.0.1"
 }
 
 processResources {

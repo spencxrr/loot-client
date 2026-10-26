@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .friend add|remove <name>, .bases [clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .bases [clear], .save. Open the GUI with Right Shift.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())
@@ -97,6 +97,21 @@ public final class CommandManager {
                     ChatUtil.info(LootClient.friends().remove(args[2]) ? "Removed " + args[2] : args[2] + " isn't a friend");
                 } else {
                     throw new IllegalArgumentException("usage: .friend [list|add <name>|remove <name>]");
+                }
+            }
+            case "macro", "macros" -> {
+                var cm = LootClient.modules().get(dev.loot.client.module.client.ChatMacro.class);
+                if (args.length < 2 || args[1].equalsIgnoreCase("list")) {
+                    if (cm.macros().isEmpty()) ChatUtil.info("No macros. .macro add <key> <message>");
+                    cm.macros().forEach((k, v) -> ChatUtil.info("  " + k + " -> " + v));
+                } else if (args.length >= 4 && args[1].equalsIgnoreCase("add")) {
+                    String msg = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
+                    if (!cm.put(args[2], msg)) throw new IllegalArgumentException("unknown key " + args[2]);
+                    ChatUtil.info("Macro " + args[2] + " -> " + msg + (cm.isEnabled() ? "" : " (turn on Chat Macro to use it)"));
+                } else if (args.length >= 3 && (args[1].equalsIgnoreCase("remove") || args[1].equalsIgnoreCase("del"))) {
+                    ChatUtil.info(cm.remove(args[2]) ? "Removed macro " + args[2] : "No macro on " + args[2]);
+                } else {
+                    throw new IllegalArgumentException("usage: .macro [list|add <key> <message>|remove <key>]");
                 }
             }
             case "save" -> {
