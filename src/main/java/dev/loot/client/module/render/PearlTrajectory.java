@@ -71,12 +71,14 @@ public class PearlTrajectory extends Module {
             Motion m = motionFor(mc.player.getStackInHand(hand));
             if (m == null) continue;
             // spawned at eye height minus 0.1, aimed with the same formula the game uses
-            Vec3d pos = mc.player.getLerpedPos(tickDelta).add(0, mc.player.getStandingEyeHeight() - 0.1, 0);
+            Vec3d pos = mc.player.getLerpedPos(tickDelta).add(0, mc.player.getEyeY() - mc.player.getY() - 0.1, 0);
             double yaw = Math.toRadians(mc.player.getYaw(tickDelta));
             double pitch = Math.toRadians(mc.player.getPitch(tickDelta));
             double pitchRoll = Math.toRadians(mc.player.getPitch(tickDelta) + m.pitchOffset());
             Vec3d dir = new Vec3d(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitchRoll), Math.cos(yaw) * Math.cos(pitch)).normalize().multiply(m.speed());
-            Vec3d move = mc.player.getMovement();
+            // The server adds how far you actually moved last tick. The client's velocity is
+            // already slowed by friction, so it undershoots badly while sprinting; use the delta.
+            Vec3d move = new Vec3d(mc.player.getX() - mc.player.lastX, mc.player.getY() - mc.player.lastY, mc.player.getZ() - mc.player.lastZ);
             Vec3d vel = dir.add(move.x, mc.player.isOnGround() ? 0 : move.y, move.z);
             simulate(r, pos, vel, m, Theme.ACCENT, true);
             break;
@@ -104,7 +106,11 @@ public class PearlTrajectory extends Module {
                 return;
             }
             // skip the first segment of your own throw so the line doesn't sit in your face
-            if (!mine || tick > 0) r.line(pos, end, color);
+            if (!mine || tick > 0) {
+                r.line(pos, end, color);
+                // a small dot per tick makes the path easy to see against any background
+                r.boxFill(new Box(end.x - 0.06, end.y - 0.06, end.z - 0.06, end.x + 0.06, end.y + 0.06, end.z + 0.06), color);
+            }
             if (hit instanceof BlockHitResult bh && hit.getType() == HitResult.Type.BLOCK) {
                 drawLanding(r, bh, m.pearl());
                 return;
