@@ -35,13 +35,14 @@ public class LightFinder extends ChunkScanModule<List<BlockPos>> {
     private final NumberSetting maxY = add(new NumberSetting("MaxY", "Height limit for Underground.", 40, -64, 320, 1));
     private final NumberSetting minCount = add(new NumberSetting("MinCount", "Lights a chunk needs before it alerts.", 3, 1, 50, 1));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound when a chunk passes MinCount.", true));
+    private final BoolSetting ignoreStructures = add(new BoolSetting("IgnoreStructures", "Skip chunks with strongholds, ancient cities, trial chambers and other generated lights.", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 50, 0, 255, 5));
 
     public LightFinder() {
         super("Light Finder", "Finds player-placed lights like torches and lanterns.", Category.BASEFINDING);
     }
 
-    private static Set<Block> all;
+    private static volatile Set<Block> all;
 
     private static boolean isLight(BlockState s) {
         if (all == null) {
@@ -61,7 +62,9 @@ public class LightFinder extends ChunkScanModule<List<BlockPos>> {
         List<BlockPos> out = new ArrayList<>();
         ChunkSection[] sections = chunk.getSectionArray();
         int bx = chunk.getPos().getStartX(), bz = chunk.getPos().getStartZ();
-        int limit = undergroundOnly.get() ? maxY.getInt() : Integer.MAX_VALUE;
+        // the nether and end have no natural torches at any height
+        boolean overworld = chunk.getWorld().getRegistryKey() == net.minecraft.world.World.OVERWORLD;
+        int limit = undergroundOnly.get() && overworld ? maxY.getInt() : Integer.MAX_VALUE;
         for (int i = 0; i < sections.length; i++) {
             ChunkSection section = sections[i];
             if (section == null || section.isEmpty()) continue;
@@ -75,7 +78,9 @@ public class LightFinder extends ChunkScanModule<List<BlockPos>> {
                         if (isLight(section.getBlockState(x, y, z))) out.add(new BlockPos(bx + x, by + y, bz + z));
             }
         }
-        return out.size() >= minCount.getInt() ? out : null;
+        if (out.size() < minCount.getInt()) return null;
+        if (ignoreStructures.get() && Structures.detect(chunk) != null) return null;
+        return out;
     }
 
     @Override

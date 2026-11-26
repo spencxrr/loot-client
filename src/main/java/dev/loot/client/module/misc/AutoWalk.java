@@ -13,12 +13,14 @@ public class AutoWalk extends Module {
 
     @Override
     public void onTick() {
+        if (mc.currentScreen != null) return;
         mc.options.forwardKey.setPressed(true);
         if (sprint.get()) mc.options.sprintKey.setPressed(true);
     }
 
     @Override
     public void onDisable() {
-        mc.options.forwardKey.setPressed(false);
+        dev.loot.client.util.KeyUtil.release(mc.options.forwardKey);
+        if (sprint.get()) dev.loot.client.util.KeyUtil.release(mc.options.sprintKey);
     }
 }

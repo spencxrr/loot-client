@@ -33,8 +33,11 @@ final class CrystalUtil {
 
     static void place(BlockPos base) {
         Vec3d hit = Vec3d.ofCenter(base).add(0, 0.5, 0);
-        mc().interactionManager.interactBlock(mc().player, Hand.MAIN_HAND, new BlockHitResult(hit, Direction.UP, base, false));
-        mc().player.swingHand(Hand.MAIN_HAND);
+        // place from whichever hand actually holds the crystal (offhand crystals used to do nothing)
+        Hand hand = mc().player.getMainHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL) || !mc().player.getOffHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL)
+            ? Hand.MAIN_HAND : Hand.OFF_HAND;
+        mc().interactionManager.interactBlock(mc().player, hand, new BlockHitResult(hit, Direction.UP, base, false));
+        mc().player.swingHand(hand);
     }
 
     static void hit(EndCrystalEntity crystal) {
@@ -53,11 +56,15 @@ final class CrystalUtil {
         double impact = (1.0 - dist) * exposure;
         float dmg = (float) ((impact * impact + impact) / 2.0 * 7.0 * 12.0 + 1.0);
         if (target instanceof LivingEntity l) {
-            // crude armor approximation so netherite targets aren't overrated
+            // vanilla armor formula with toughness, then Resistance; enchantments are left out
             float armor = l.getArmor();
-            dmg *= 1f - Math.min(20f, Math.max(armor / 5f, armor - dmg / 4f)) / 25f;
+            float toughness = (float) l.getAttributeValue(net.minecraft.entity.attribute.EntityAttributes.ARMOR_TOUGHNESS);
+            float reduced = net.minecraft.util.math.MathHelper.clamp(armor - dmg / (2f + toughness / 4f), armor * 0.2f, 20f);
+            dmg *= 1f - reduced / 25f;
+            var resistance = l.getStatusEffect(net.minecraft.entity.effect.StatusEffects.RESISTANCE);
+            if (resistance != null) dmg *= Math.max(0f, 1f - (resistance.getAmplifier() + 1) * 0.2f);
         }
-        return dmg;
+        return Math.max(0f, dmg);
     }
 
     static Vec3d crystalPos(BlockPos base) {

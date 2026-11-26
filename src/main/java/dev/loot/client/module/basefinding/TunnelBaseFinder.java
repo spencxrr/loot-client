@@ -5,25 +5,36 @@ import dev.loot.client.render.Render3D;
 import dev.loot.client.setting.BoolSetting;
 import dev.loot.client.setting.NumberSetting;
 import dev.loot.client.util.ChatUtil;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.registry.Registries;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Looks for perfectly straight 1-wide, 2-tall air corridors cut through stone: caves are never
- * that regular, people strip-mining or tunnelling to a stash are. Runs are measured inside each
- * chunk, so MinLength tops out at 16.
+ * Looks for perfectly straight 1-wide, 2-tall air corridors cut through rock: caves are never
+ * that regular, people strip-mining or tunnelling to a stash are. Runs are followed across chunk
+ * borders, so long tunnels are reported once as one line no matter how many chunks they cross.
  */
 public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunnel>> {
-    record Tunnel(BlockPos start, BlockPos end) {}
+    record Tunnel(BlockPos start, BlockPos end) {
+        int length() {
+            return Math.max(Math.abs(end.getX() - start.getX()), Math.abs(end.getZ() - start.getZ())) + 1;
+        }
+    }
 
-    private final NumberSetting minLength = add(new NumberSetting("MinLength", "Straight blocks needed to count as a tunnel.", 10, 5, 16, 1));
+    private static final int MAX_FOLLOW = 160;
+
+    private final NumberSetting minLength = add(new NumberSetting("MinLength", "Straight blocks needed to count as a tunnel.", 12, 5, 64, 1));
     private final NumberSetting maxY = add(new NumberSetting("MaxY", "Only look below this height.", 60, -64, 320, 1));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new tunnels.", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 35, 0, 255, 5));
@@ -32,10 +43,17 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         super("Tunnel Base Finder", "Finds straight, hand-dug tunnels underground.", Category.BASEFINDING);
     }
 
+    private static volatile Set<Block> rocks;
+
     private static boolean rock(BlockState s) {
-        return s.isOf(Blocks.STONE) || s.isOf(Blocks.DEEPSLATE) || s.isOf(Blocks.TUFF) || s.isOf(Blocks.NETHERRACK)
-            || s.isOf(Blocks.ANDESITE) || s.isOf(Blocks.DIORITE) || s.isOf(Blocks.GRANITE) || s.isOf(Blocks.BLACKSTONE)
-            || s.isOf(Blocks.BASALT) || s.isOf(Blocks.END_STONE);
+        if (rocks == null) {
+            Set<Block> set = new HashSet<>(List.of(Blocks.STONE, Blocks.DEEPSLATE, Blocks.TUFF, Blocks.NETHERRACK, Blocks.ANDESITE,
+                Blocks.DIORITE, Blocks.GRANITE, Blocks.BLACKSTONE, Blocks.BASALT, Blocks.SMOOTH_BASALT, Blocks.END_STONE, Blocks.CALCITE,
+                Blocks.DRIPSTONE_BLOCK, Blocks.GRAVEL, Blocks.DIRT, Blocks.SOUL_SOIL, Blocks.SOUL_SAND, Blocks.MAGMA_BLOCK));
+            for (Block b : Registries.BLOCK) if (Registries.BLOCK.getId(b).getPath().endsWith("_ore")) set.add(b);
+            rocks = set;
+        }
+        return rocks.contains(s.getBlock());
     }
 
     /** Air 2 tall with rock floor, ceiling and both walls, for a corridor running along x (alongX) or z. */
@@ -54,23 +72,23 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         int top = Math.min(maxY.getInt(), v.topY() - 3);
         int need = minLength.getInt();
         for (int y = v.bottomY() + 1; y <= top; y++) {
-            for (int z = 0; z < 16; z++) { // runs along x
-                int run = 0;
-                for (int x = 0; x <= 16; x++) {
-                    if (x < 16 && corridor(v, x, y, z, true)) run++;
-                    else {
-                        if (run >= need) out.add(new Tunnel(v.world(x - run, y, z), v.world(x - 1, y, z)));
-                        run = 0;
+            for (int a = 0; a < 16; a++) {
+                for (int b = 0; b < 16; b++) {
+                    // along x: row z = a, start x = b
+                    if (corridor(v, b, y, a, true) && !corridor(v, b - 1, y, a, true)) {
+                        int len = 1;
+                        while (len < MAX_FOLLOW && corridor(v, b + len, y, a, true)) len++;
+                        if (len >= need) out.add(new Tunnel(v.world(b, y, a), v.world(b + len - 1, y, a)));
+                        b += len - 1;
                     }
                 }
-            }
-            for (int x = 0; x < 16; x++) { // runs along z
-                int run = 0;
-                for (int z = 0; z <= 16; z++) {
-                    if (z < 16 && corridor(v, x, y, z, false)) run++;
-                    else {
-                        if (run >= need) out.add(new Tunnel(v.world(x, y, z - run), v.world(x, y, z - 1)));
-                        run = 0;
+                for (int b = 0; b < 16; b++) {
+                    // along z: column x = a, start z = b
+                    if (corridor(v, a, y, b, false) && !corridor(v, a, y, b - 1, false)) {
+                        int len = 1;
+                        while (len < MAX_FOLLOW && corridor(v, a, y, b + len, false)) len++;
+                        if (len >= need) out.add(new Tunnel(v.world(a, y, b), v.world(a, y, b + len - 1)));
+                        b += len - 1;
                     }
                 }
             }
@@ -81,8 +99,9 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
     @Override
     protected void onFound(ChunkPos pos, List<Tunnel> tunnels) {
         if (!alert.get()) return;
-        BlockPos p = tunnels.get(0).start();
-        ChatUtil.coords("Tunnel found at", p.getX(), p.getY(), p.getZ());
+        Tunnel longest = tunnels.stream().max(Comparator.comparingInt(Tunnel::length)).orElse(tunnels.get(0));
+        BlockPos p = longest.start();
+        ChatUtil.coords("Tunnel (" + longest.length() + " long) at", p.getX(), p.getY(), p.getZ());
         ChatUtil.ping();
     }
 

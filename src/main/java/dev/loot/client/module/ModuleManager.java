@@ -70,6 +70,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.basefinding.BlockEntityDebug());
         register(new dev.loot.client.module.basefinding.HoleESP());
         register(new dev.loot.client.module.basefinding.LightFinder());
+        register(new dev.loot.client.module.basefinding.NewChunks());
         register(new dev.loot.client.module.basefinding.SusChunkFinder());
         register(new dev.loot.client.module.basefinding.SuspiciousESP());
         register(new dev.loot.client.module.basefinding.TunnelBaseFinder());

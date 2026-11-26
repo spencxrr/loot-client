@@ -15,6 +15,6 @@ public class Sprint extends Module {
 
     @Override
     public void onDisable() {
-        mc.options.sprintKey.setPressed(false);
+        dev.loot.client.util.KeyUtil.release(mc.options.sprintKey);
     }
 }
