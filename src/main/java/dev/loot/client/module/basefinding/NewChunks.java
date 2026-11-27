@@ -11,6 +11,7 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
@@ -47,8 +48,13 @@ public class NewChunks extends ChunkScanModule<Integer> {
     private final BoolSetting trailAlert = add(new BoolSetting("TrailAlert", "Chat + sound when a trail is found, with the way it heads.", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Square opacity.", 55, 10, 255, 5));
 
+    /** Flow updates right after generation come within a few seconds of the chunk being sent. */
+    private static final long FRESH_WINDOW_MS = 12_000;
+
     /** Filled from the network thread. */
     private final Set<Long> fresh = ConcurrentHashMap.newKeySet();
+    /** When each chunk's data arrived (network thread), so later flow (someone pouring water) doesn't count. */
+    private final java.util.Map<Long, Long> sentAt = new ConcurrentHashMap<>();
     private ClientWorld lastWorld;
     private Set<Long> trail = Set.of();
     private final Set<Long> trailAlerted = new java.util.HashSet<>();
@@ -71,19 +77,32 @@ public class NewChunks extends ChunkScanModule<Integer> {
     public void onDisable() {
         super.onDisable();
         fresh.clear();
+        sentAt.clear();
     }
 
     @Override
     public boolean onPacketReceive(Packet<?> packet) {
         // no super: liquids flowing shouldn't trigger rescans, they *are* the signal
-        if (packet instanceof BlockUpdateS2CPacket p) {
-            if (flowing(p.getState())) fresh.add(ChunkPos.toLong(p.getPos().getX() >> 4, p.getPos().getZ() >> 4));
+        if (packet instanceof ChunkDataS2CPacket p) {
+            sentAt.put(ChunkPos.toLong(p.getChunkX(), p.getChunkZ()), System.currentTimeMillis());
+        } else if (packet instanceof BlockUpdateS2CPacket p) {
+            if (flowing(p.getState())) flowed(ChunkPos.toLong(p.getPos().getX() >> 4, p.getPos().getZ() >> 4));
         } else if (packet instanceof ChunkDeltaUpdateS2CPacket p) {
             p.visitUpdates((pos, state) -> {
-                if (flowing(state)) fresh.add(ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4));
+                if (flowing(state)) flowed(ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4));
             });
         }
         return false;
+    }
+
+    private void flowed(long key) {
+        Long t = sentAt.get(key);
+        if (t != null && System.currentTimeMillis() - t <= FRESH_WINDOW_MS) fresh.add(key);
+    }
+
+    /** New only if its own data had no flowing liquid: a chunk that already had flow is old, first evidence wins. */
+    private boolean isNew(long k) {
+        return fresh.contains(k) && results.get(k) == null;
     }
 
     private static boolean flowing(BlockState state) {
@@ -126,6 +145,7 @@ public class NewChunks extends ChunkScanModule<Integer> {
             lastWorld = mc.world;
             results.clear();
             fresh.clear();
+            sentAt.clear();
             trail = Set.of();
             trailAlerted.clear();
         }
@@ -137,12 +157,13 @@ public class NewChunks extends ChunkScanModule<Integer> {
             int max = range.getInt() * 2;
             prune(results.keySet().iterator(), c, max);
             prune(fresh.iterator(), c, max);
+            prune(sentAt.keySet().iterator(), c, max);
         }
     }
 
     private boolean isOld(long k) {
         Integer t = results.get(k);
-        return t != null && !fresh.contains(k);
+        return t != null;
     }
 
     /**
@@ -156,7 +177,7 @@ public class NewChunks extends ChunkScanModule<Integer> {
             int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k), news = 0;
             for (int dx = -1; dx <= 1; dx++)
                 for (int dz = -1; dz <= 1; dz++)
-                    if ((dx != 0 || dz != 0) && fresh.contains(ChunkPos.toLong(cx + dx, cz + dz))) news++;
+                    if ((dx != 0 || dz != 0) && isNew(ChunkPos.toLong(cx + dx, cz + dz))) news++;
             if (news >= 3) found.add(k);
         }
         trail = found;
@@ -208,13 +229,13 @@ public class NewChunks extends ChunkScanModule<Integer> {
         int alpha = fill.getInt() << 24;
         if (showNew.get()) {
             for (long k : fresh) {
-                if (far(k, c, max)) continue;
+                if (far(k, c, max) || !isNew(k)) continue;
                 square(r, k, y, alpha | 0xFF4D4D);
             }
         }
         for (var e : results.entrySet()) {
             long k = e.getKey();
-            if (fresh.contains(k) || far(k, c, max)) continue;
+            if (far(k, c, max)) continue;
             int type = e.getValue();
             if (trails.get() && trail.contains(k)) square(r, k, y, (Math.min(255, fill.getInt() + 60) << 24) | 0x3DF5FF);
             else if (type == OLD && showOld.get()) square(r, k, y, alpha | 0x5CE68A);

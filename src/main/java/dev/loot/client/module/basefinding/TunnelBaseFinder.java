@@ -39,6 +39,7 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
     private final NumberSetting maxY = add(new NumberSetting("MaxY", "Only look below this height.", 60, -64, 320, 1));
     private final ModeSetting size = add(new ModeSetting("Size", "Tunnel cross-section: 1x2 strip mines, 2x2 and 3x3 dug highways and nether tunnels.", "1x2", "1x2", "2x2", "3x3", "All"));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new tunnels.", true));
+    private final BoolSetting feedBases = add(new BoolSetting("FeedBaseFinder", "Count tunnels as evidence in Sus Chunk Finder's bases (when it's on).", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 35, 0, 255, 5));
 
     public TunnelBaseFinder() {
@@ -49,6 +50,66 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
     @Override
     protected boolean keepUnloaded() {
         return true; // tunnels stay marked after you fly past
+    }
+
+    @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{minLength, maxY};
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        SusChunkFinder sus = sus();
+        if (sus != null) sus.clearFed("tunnel");
+    }
+
+    @Override
+    public void onTick() {
+        boolean feeding = feedBases.get();
+        if (feeding != lastFeeding) {
+            lastFeeding = feeding;
+            SusChunkFinder sus = sus();
+            if (sus != null) {
+                if (!feeding) sus.clearFed("tunnel");
+                else results.forEach(this::feed);
+            }
+        }
+        super.onTick();
+    }
+
+    private boolean lastFeeding;
+
+    @Override
+    protected void onWorldChange() {
+        SusChunkFinder sus = sus();
+        if (sus != null) sus.clearFed("tunnel");
+    }
+
+    @Override
+    protected void onStored(long key, List<Tunnel> old, List<Tunnel> now) {
+        if (feedBases.get()) feed(key, now);
+    }
+
+    private void feed(long key, List<Tunnel> tunnels) {
+        SusChunkFinder sus = sus();
+        if (sus == null) return;
+        if (tunnels == null || tunnels.isEmpty()) {
+            sus.feed("tunnel", key, null);
+            return;
+        }
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE, n = 0;
+        for (Tunnel t : tunnels) {
+            minY = Math.min(minY, t.start().getY());
+            maxY = Math.max(maxY, t.end().getY() + 1);
+            // a really long one says more than a short one
+            n += 1 + t.length() / 48;
+        }
+        sus.feed("tunnel", key, new SusChunkFinder.Evidence(java.util.Map.of("tunnel", n), minY, maxY));
+    }
+
+    private static SusChunkFinder sus() {
+        return dev.loot.client.LootClient.modules() == null ? null : dev.loot.client.LootClient.modules().get(SusChunkFinder.class);
     }
 
     private static volatile Set<Block> rocks;

@@ -3,6 +3,7 @@ package dev.loot.client.module.basefinding;
 import dev.loot.client.LootClient;
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
+import dev.loot.client.setting.Setting;
 import dev.loot.client.util.WorldUtil;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
@@ -10,9 +11,11 @@ import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.WorldChunk;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -53,6 +56,9 @@ public abstract class ChunkScanModule<T> extends Module {
     private final AtomicInteger generation = new AtomicInteger();
     private int ticks;
     private int refreshTimer;
+    private Object world;
+    private List<Object> watched;
+    private int watchedSettleAt = -1;
 
     protected ChunkScanModule(String name, String description, Category category) {
         super(name, description, category);
@@ -71,6 +77,22 @@ public abstract class ChunkScanModule<T> extends Module {
 
     /** Called once when a chunk first produces a result (not on refreshes). */
     protected void onFound(ChunkPos pos, T result) {}
+
+    /** Called on the main thread after every finished scan: the stored value went from old to now (either may be null). */
+    protected void onStored(long key, T old, T now) {}
+
+    /** Called when you change world or dimension, before anything from the new world is scanned. */
+    protected void onWorldChange() {}
+
+    /** Settings that change what {@link #scan} finds; changing one re-scans (once a slider stops moving). */
+    protected Setting<?>[] rescanOn() {
+        return new Setting<?>[0];
+    }
+
+    /** Runs when a {@link #rescanOn} setting changed. Default: re-scan everything loaded. */
+    protected void onScanSettingsChanged() {
+        rescanAll();
+    }
 
     /** How many chunks around the player get re-scanned periodically, 0 to disable. */
     protected int refreshRadius() {
@@ -149,6 +171,35 @@ public abstract class ChunkScanModule<T> extends Module {
     @Override
     public void onTick() {
         ticks++;
+        if (mc.world != world) {
+            // results from the last world or dimension mean nothing here (and kept ones would draw in the wrong place)
+            world = mc.world;
+            generation.incrementAndGet();
+            results.clear();
+            queue.clear();
+            inFlight.clear();
+            done.clear();
+            dirty.clear();
+            dirtyAt.clear();
+            retries.clear();
+            onWorldChange();
+            for (WorldChunk chunk : WorldUtil.loadedChunks()) queue.add(chunk.getPos().toLong());
+        }
+        Setting<?>[] watch = rescanOn();
+        if (watch.length > 0) {
+            List<Object> now = new ArrayList<>(watch.length);
+            for (Setting<?> st : watch) now.add(st.get());
+            if (watched == null) watched = now;
+            else if (!now.equals(watched)) {
+                watched = now;
+                watchedSettleAt = ticks + 10;
+            }
+            if (watchedSettleAt != -1 && ticks >= watchedSettleAt) {
+                watchedSettleAt = -1;
+                onScanSettingsChanged();
+            }
+        }
+
         // block changes: wait a few ticks so bursts (explosions, pistons) coalesce into one rescan
         Long d;
         while ((d = dirty.poll()) != null) dirtyAt.putIfAbsent(d, ticks + 4);
@@ -196,11 +247,9 @@ public abstract class ChunkScanModule<T> extends Module {
                 continue;
             }
             T result = job.result() == null ? null : postScan(chunk, job.result());
-            if (result == null) {
-                results.remove(job.key());
-            } else if (results.put(job.key(), result) == null) {
-                onFound(chunk.getPos(), result);
-            }
+            T old = result == null ? results.remove(job.key()) : results.put(job.key(), result);
+            if (result != null && old == null) onFound(chunk.getPos(), result);
+            onStored(job.key(), old, result);
             if (System.nanoTime() > deadline) break;
         }
     }

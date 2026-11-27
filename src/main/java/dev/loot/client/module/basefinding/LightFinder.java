@@ -66,7 +66,7 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     private final BoolSetting ignoreStructures = add(new BoolSetting("IgnoreStructures", "Skip chunks with strongholds, ancient cities, trial chambers and other generated lights.", true));
     private final NumberSetting spawnRadius = add(new NumberSetting("SpawnRadius", "Ignore everything this close to 0,0 (overworld blocks; nether is /8). 0 = off.", 1000, 0, 20000, 250));
     private final BoolSetting feedBases = add(new BoolSetting("FeedBaseFinder", "Add light evidence to Sus Chunk Finder's bases (when it's on).", true));
-    private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new lit areas (Sus Chunk Finder alerts instead when it's fed).", true));
+    private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new lit areas (skipped when Sus Chunk Finder already pinged a base there).", true));
     private final ModeSetting height = add(new ModeSetting("DrawAt", "Draw squares below you (good on elytra) or at a fixed height. Same as Sus Chunk Finder so they layer.", "BelowMe", "BelowMe", "Fixed"));
     private final NumberSetting fixedY = add(new NumberSetting("FixedY", "Height for DrawAt Fixed.", 64, -64, 320, 1));
     private final BoolSetting depth = add(new BoolSetting("ShowDepth", "Column showing the Y range the light was found in.", true));
@@ -109,7 +109,13 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
         super.onDisable();
         alerted.clear();
         SusChunkFinder sus = sus();
-        if (sus != null) sus.clearLight();
+        if (sus != null) sus.clearFed("light");
+        pendingAlerts.clear();
+    }
+
+    @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{maxY, hidden, hiddenLevel, furnaces, ignoreStructures, spawnRadius};
     }
 
     @Override
@@ -129,10 +135,44 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             lightLooksFake = false;
             warnedFake = false;
             fakeChunks.set(0);
+            pendingAlerts.clear();
             SusChunkFinder sus = sus();
-            if (sus != null) sus.clearLight();
+            if (sus != null) sus.clearFed("light");
+        }
+        // sensitivity only changes which results count, not what was found: re-filter and re-feed, no rescan
+        int t = threshold();
+        boolean feeding = feedBases.get();
+        if (t != lastThreshold || feeding != lastFeeding) {
+            lastThreshold = t;
+            lastFeeding = feeding;
+            SusChunkFinder sus = sus();
+            if (!feeding && sus != null) sus.clearFed("light");
+            else results.forEach((k, res) -> feed(k, counts(res) ? res : null));
         }
         super.onTick();
+        flushAlerts();
+    }
+
+    private int lastThreshold = -1;
+    private boolean lastFeeding;
+    /** Finds waiting a moment to see whether Sus Chunk Finder turns them into a base alert instead. */
+    private final java.util.Map<Long, Integer> pendingAlerts = new java.util.HashMap<>();
+
+    private void flushAlerts() {
+        if (pendingAlerts.isEmpty()) return;
+        SusChunkFinder sus = sus();
+        var it = pendingAlerts.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (mc.player.age < e.getValue()) continue;
+            it.remove();
+            long key = e.getKey();
+            Result res = results.get(key);
+            if (res == null || !counts(res)) continue;
+            // Sus Chunk Finder already pinged for a base here, ours would be a duplicate
+            if (sus != null && sus.isEnabled() && feedBases.get() && sus.alertedNear(key)) continue;
+            announceNow(new ChunkPos(key), res);
+        }
     }
 
     private static SusChunkFinder sus() {
@@ -337,14 +377,18 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             ChatUtil.info("Light Finder: this server's light data doesn't match its blocks (anti light-finder?). Hidden light is off for those chunks; placed lights and furnaces still work.");
         }
         if (counts(out)) announce(pos, out);
-        // keep unconfirmed results around (not drawn) so the confirming scan can see them
-        return score >= threshold() || r.hidden() > 0 ? out : null;
+        // keep everything (only what passes the threshold is drawn) so a sensitivity change works on
+        // chunks you already left, and so the confirming hidden-light scan can see the first one
+        return r.marks().isEmpty() && r.hidden() == 0 ? null : out;
     }
 
     private void feed(long key, Result r) {
         SusChunkFinder sus = sus();
         if (sus == null || !feedBases.get()) return;
-        sus.feedLight(key, r == null ? null : new SusChunkFinder.LightEvidence(r.confirmedHidden(), r.furnaces(), r.minY(), r.maxY()));
+        java.util.Map<String, Integer> c = new java.util.TreeMap<>();
+        if (r != null && r.confirmedHidden() > 0) c.put("hidden light", r.confirmedHidden());
+        if (r != null && r.furnaces() > 0) c.put("lit furnace", r.furnaces());
+        sus.feed("light", key, c.isEmpty() ? null : new SusChunkFinder.Evidence(c, r.minY(), r.maxY()));
     }
 
     private boolean ignored(ChunkPos pos) {
@@ -362,7 +406,13 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     private void announce(ChunkPos pos, Result r) {
         if (!alert.get()) return;
         SusChunkFinder sus = sus();
-        if (feedBases.get() && sus != null && sus.isEnabled()) return; // it'll announce the base
+        // with Sus on, give it a couple of seconds to score the chunk; we only ping if it doesn't
+        boolean wait = feedBases.get() && sus != null && sus.isEnabled();
+        if (wait) pendingAlerts.putIfAbsent(pos.toLong(), mc.player.age + 50);
+        else announceNow(pos, r);
+    }
+
+    private void announceNow(ChunkPos pos, Result r) {
         for (long k : alerted) {
             if (Math.abs(ChunkPos.getPackedX(k) - pos.x) <= 2 && Math.abs(ChunkPos.getPackedZ(k) - pos.z) <= 2) return;
         }

@@ -31,6 +31,44 @@ public class HoleESP extends ChunkScanModule<List<HoleESP.Hole>> {
     }
 
     @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{minDepth};
+    }
+
+    @Override
+    protected void onStored(long key, List<Hole> old, List<Hole> now) {
+        SusChunkFinder sus = sus();
+        if (sus == null) return;
+        if (now == null || !mode.is("Shafts")) {
+            sus.feed("shaft", key, null);
+            return;
+        }
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        for (Hole h : now) {
+            minY = Math.min(minY, h.bottom().getY());
+            maxY = Math.max(maxY, h.bottom().getY() + h.depth());
+        }
+        sus.feed("shaft", key, new SusChunkFinder.Evidence(java.util.Map.of("shaft", now.size()), minY, maxY));
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        SusChunkFinder sus = sus();
+        if (sus != null) sus.clearFed("shaft");
+    }
+
+    @Override
+    protected void onWorldChange() {
+        SusChunkFinder sus = sus();
+        if (sus != null) sus.clearFed("shaft");
+    }
+
+    private static SusChunkFinder sus() {
+        return dev.loot.client.LootClient.modules() == null ? null : dev.loot.client.LootClient.modules().get(SusChunkFinder.class);
+    }
+
+    @Override
     protected List<Hole> scan(WorldChunk chunk) {
         ChunkView v = new ChunkView(chunk);
         List<Hole> out = new ArrayList<>();

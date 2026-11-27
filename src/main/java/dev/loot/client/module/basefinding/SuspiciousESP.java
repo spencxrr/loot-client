@@ -34,6 +34,11 @@ public class SuspiciousESP extends ChunkScanModule<List<SuspiciousESP.Find>> {
         super("Suspicious ESP", "Highlights blocks that only players place.", Category.BASEFINDING);
     }
 
+    @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{undergroundY, redstone, ignoreStructures};
+    }
+
     /** 0 when not suspicious, otherwise the color to draw it in. */
     private int classify(BlockState s, int y) {
         Block b = s.getBlock();

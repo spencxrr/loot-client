@@ -65,7 +65,7 @@ import java.util.regex.Pattern;
  * remembered across sessions so you don't get pinged twice for the same place.
  */
 public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
-    /** {@code raw} is only set between the worker scan and scoring on the main thread. */
+    /** {@code raw} is the chunk's own evidence (before fed evidence), kept so the hit can be re-scored offline. */
     public record Hit(int score, int minY, int maxY, Map<String, Integer> counts, boolean nearStructure, Raw raw) {
         String summary() {
             StringBuilder sb = new StringBuilder();
@@ -79,8 +79,11 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     /** What the worker thread hands back: raw evidence, scored on the main thread. */
     public record Raw(Map<String, Integer> counts, String structure, int minY, int maxY, int minutes) {}
 
-    /** Light evidence handed over by Light Finder (only what this module can't see itself). */
-    public record LightEvidence(int hidden, int litFurnaces, int minY, int maxY) {}
+    /**
+     * Evidence another finder hands over for one chunk (things this module can't see itself, like
+     * hidden light or dug tunnels). Kinds are scored with {@link #weight}.
+     */
+    public record Evidence(Map<String, Integer> counts, int minY, int maxY) {}
 
     public record Base(List<Long> chunks, int score, int x, int z, int minY, int maxY, String summary, boolean known) {
         double distanceTo(Vec3d p) {
@@ -115,7 +118,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private final Set<Long> known = new HashSet<>();
     private final Set<Long> alerted = new HashSet<>();
     private final Set<Long> alertedStrong = new HashSet<>();
-    private final Map<Long, LightEvidence> lightEvidence = new ConcurrentHashMap<>();
+    /** source module -> chunk -> evidence it found there. */
+    private final Map<String, Map<Long, Evidence>> fed = new ConcurrentHashMap<>();
     private List<Base> bases = List.of();
     private boolean basesDirty;
 
@@ -142,6 +146,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     @Override
     public void onEnable() {
         lastWorld = null;
+        basesDirty = true;
         super.onEnable();
     }
 
@@ -167,15 +172,67 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         bases = List.of();
     }
 
-    /** Light Finder's results for a chunk (null clears them); the chunk gets re-scored. */
-    public void feedLight(long key, LightEvidence ev) {
-        LightEvidence old = ev == null ? lightEvidence.remove(key) : lightEvidence.put(key, ev);
-        if (Objects.equals(old, ev) || !isEnabled() || !inGame()) return;
-        if (mc.world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key)) != null) enqueue(key);
+    /** Another finder's evidence for a chunk (null or empty clears it); the chunk gets re-scored. */
+    public void feed(String source, long key, Evidence ev) {
+        if (ev != null && ev.counts().isEmpty()) ev = null;
+        Map<Long, Evidence> map = fed.computeIfAbsent(source, s -> new ConcurrentHashMap<>());
+        Evidence old = ev == null ? map.remove(key) : map.put(key, ev);
+        if (!Objects.equals(old, ev)) rescore(key);
     }
 
-    public void clearLight() {
-        lightEvidence.clear();
+    /** Drops everything a finder fed (it was turned off); affected chunks get re-scored. */
+    public void clearFed(String source) {
+        Map<Long, Evidence> map = fed.remove(source);
+        if (map != null) map.keySet().forEach(this::rescore);
+    }
+
+    private void rescore(long key) {
+        if (!isEnabled() || !inGame()) return;
+        if (mc.world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key)) != null) enqueue(key);
+        else rescoreOffline(key);
+    }
+
+    /** Unloaded chunk: re-score from what was stored. Returns false if it no longer counts. */
+    private boolean rescoreOffline(long key) {
+        Hit h = results.get(key);
+        if (h == null || h.raw() == null) return h != null;
+        Hit now = ignored(new ChunkPos(key)) ? null : score(key, h.raw(), structures.get() && h.nearStructure());
+        if (now == null) results.remove(key);
+        else results.put(key, now);
+        if (!Objects.equals(h, now)) basesDirty = true;
+        return now != null;
+    }
+
+    @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{sensitivity, structures, spawnRadius, hideOwn};
+    }
+
+    @Override
+    protected void onScanSettingsChanged() {
+        // re-score what's stored (covers chunks you already flew away from), then rescan what's loaded
+        for (Long k : new ArrayList<>(results.keySet())) rescoreOffline(k);
+        rescanAll();
+        basesDirty = true;
+    }
+
+    /** Whether a base alert already went out for this chunk or one right next to it. */
+    public boolean alertedNear(long key) {
+        int cx = ChunkPos.getPackedX(key), cz = ChunkPos.getPackedZ(key);
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++)
+                if (alerted.contains(ChunkPos.toLong(cx + dx, cz + dz))) return true;
+        return false;
+    }
+
+    private boolean hasFed(long key) {
+        for (Map<Long, Evidence> m : fed.values()) if (m.containsKey(key)) return true;
+        return false;
+    }
+
+    @Override
+    protected void onStored(long key, Hit old, Hit now) {
+        if (!Objects.equals(old, now)) basesDirty = true;
     }
 
     @Override
@@ -220,6 +277,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             case "shulker" -> 6;
             case "conduit", "netherite block" -> 5;
             case "ender chest", "respawn anchor", "diamond block", "hidden light" -> 4;
+            case "tunnel" -> 2;
+            case "shaft" -> 1;
             case "enchanting table", "crafter", "anvil", "nether portal" -> 3;
             case "hopper", "banner", "skull", "lit furnace", "jukebox", "armor stand", "item frame", "emerald block" -> 2;
             case "sign", "chest", "barrel", "furnace", "bed", "brewing stand", "dispenser", "comparator", "crafting table",
@@ -232,7 +291,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private static boolean lootish(String kind) {
         return switch (kind) {
             case "chest", "barrel", "dispenser", "bed", "furnace", "brewing stand", "crafting table", "light", "banner",
-                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "underground build", "stash", "hopper", "hidden light" -> true;
+                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "underground build", "stash", "hopper", "hidden light", "tunnel", "shaft" -> true;
             default -> false;
         };
     }
@@ -373,7 +432,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         // ~68s of loaded time per growth tick; kelp at max age needs a few minutes at least
         int minutes = (int) Math.round(growthTicks * 1.14);
         if (grownKelp >= 3) minutes = Math.max(minutes, 16);
-        if (counts.isEmpty() && minutes < 5 && structure == null && !lightEvidence.containsKey(chunk.getPos().toLong())) return null;
+        if (counts.isEmpty() && minutes < 5 && structure == null && !hasFed(chunk.getPos().toLong())) return null;
         return new Raw(counts, structure, minY, maxY, minutes);
     }
 
@@ -401,16 +460,6 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             maxY = Math.max(maxY, e.getBlockY());
         }
 
-        LightEvidence light = lightEvidence.get(key);
-        if (light != null) {
-            if (light.hidden() > 0) counts.put("hidden light", Math.min(4, light.hidden()));
-            if (light.litFurnaces() > 0) counts.put("lit furnace", Math.min(4, light.litFurnaces()));
-            if (light.hidden() > 0 || light.litFurnaces() > 0) {
-                minY = Math.min(minY, light.minY());
-                maxY = Math.max(maxY, light.maxY());
-            }
-        }
-
         // a structure found here also taints its neighbours; re-check them once
         String old = structure == null ? structureChunks.remove(key) : structureChunks.put(key, structure);
         if (!Objects.equals(old, structure)) {
@@ -422,6 +471,23 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
 
         if (ignored(pos)) return null;
         boolean nearStructure = structures.get() && nearStructure(pos);
+        return score(key, new Raw(counts, structure, minY, maxY, raw.minutes()), nearStructure);
+    }
+
+    /**
+     * Scores a chunk's own evidence plus whatever other finders fed for it. The chunk's own part is
+     * kept in the hit, so it can be re-scored after the chunk unloads (sensitivity or fed evidence changed).
+     */
+    private Hit score(long key, Raw own, boolean nearStructure) {
+        Map<String, Integer> counts = new TreeMap<>(own.counts());
+        int minY = own.minY(), maxY = own.maxY();
+        for (Map<Long, Evidence> m : fed.values()) {
+            Evidence ev = m.get(key);
+            if (ev == null) continue;
+            ev.counts().forEach((k, n) -> counts.merge(k, n, Math::max));
+            minY = Math.min(minY, ev.minY());
+            maxY = Math.max(maxY, ev.maxY());
+        }
 
         int storage = counts.getOrDefault("chest", 0) + counts.getOrDefault("barrel", 0) + counts.getOrDefault("shulker", 0) * 2;
         if (storage >= 8) counts.put("stash", 1);
@@ -439,14 +505,16 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
                 case "build blocks" -> n = Math.min(6, n / 12);
                 case "underground build" -> n = Math.min(6, n / 16);
                 case "sign" -> n = Math.min(n, 4);
+                case "hidden light", "lit furnace" -> n = Math.min(n, 4);
+                case "tunnel", "shaft" -> n = Math.min(n, 3);
                 // diminishing returns: the 40th chest says less than the 4th
                 default -> n = n <= 6 ? n : 6 + (int) Math.sqrt(n - 6);
             }
             score += w * n;
         }
-        if (raw.minutes() >= 5) {
-            score += Math.min(10, raw.minutes() / 3);
-            counts.put("~" + raw.minutes() + " min loaded", 1);
+        if (own.minutes() >= 5) {
+            score += Math.min(10, own.minutes() / 3);
+            counts.put("~" + own.minutes() + " min loaded", 1);
         }
         counts.remove("stash");
         if (storage >= 8) counts.put("stash", 1);
@@ -456,8 +524,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             minY = 50;
             maxY = 70;
         }
-        basesDirty = true;
-        return new Hit(score, minY, maxY, counts, nearStructure, null);
+        return new Hit(score, minY, maxY, counts, nearStructure, own);
     }
 
     private boolean ignored(ChunkPos pos) {
@@ -533,6 +600,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private void announce(List<Base> list) {
         int strong = threshold() * 4;
         for (Base b : list) {
+            // too small to show yet: don't mark it alerted, so it alerts once it grows past MinBaseScore
+            if (b.score() < minBaseScore.getInt()) continue;
             boolean already = b.chunks().stream().anyMatch(alerted::contains);
             boolean fresh = !b.known();
             if (!already) {
