@@ -30,14 +30,13 @@
 # Quieter output.
 -dontnote
 
-# Suppress "can't find referenced class" warnings. These come from Minecraft's
-# own transitive libraries (guava, netty, fastutil, datafixers, brigadier, ...)
-# referencing each other, not from our code - our code compiled cleanly and its
-# own superclasses (Screen, ClientModInitializer, enums) ARE on the classpath,
-# so override detection is unaffected. Without this ProGuard aborts with
-# "Please correct the above warnings first." We only rename (no shrink/optimize),
-# so unresolved library internals can't change our output.
--dontwarn
+# Print "can't find referenced class" warnings but don't abort on them. We do
+# NOT use -dontwarn here: an unresolvable type is exactly what makes ProGuard
+# mis-type a frame as java/lang/Object and produce a jar that fails JVM
+# verification, so we want these visible in the build log. With the full
+# runtimeClasspath above there should be few or none; any that remain are
+# library-internal cross-references that don't affect our own methods' frames.
+-ignorewarnings
 
 # ---------------------------------------------------------------------------
 #  Fabric entry point - fabric.mod.json references this class by its literal
