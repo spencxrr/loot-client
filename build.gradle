@@ -123,31 +123,33 @@ tasks.register('proguardRelease', ProGuardTask) {
 // stack-map frames are unchanged and no Minecraft types need re-resolving). The
 // CI JVM verifier still gates the result.
 def strObfDevJar = layout.buildDirectory.file('release/loot-client-strobf-dev.jar')
+def strObfToolDir = layout.buildDirectory.dir('release/strobf-tool')
 
-tasks.register('stringObfRelease') {
+// Compile the tiny ASM tool. Kept as a JavaCompile/JavaExec pair rather than
+// ad-hoc exec {} because Project.exec() is not available inside a task action
+// on modern Gradle.
+tasks.register('compileStringObfTool', JavaCompile) {
+    source = files('tools/StringObf.java')
+    classpath = configurations.obfTool
+    destinationDirectory.set(strObfToolDir)
+    options.release = 21
+}
+
+tasks.register('stringObfRelease', JavaExec) {
     group = 'build'
     description = 'Encrypts string literals in the obfuscated jar (post-ProGuard, pre-remap).'
-    dependsOn tasks.named('proguardRelease')
+    dependsOn tasks.named('proguardRelease'), tasks.named('compileStringObfTool')
 
     inputs.file obfuscatedDevJar
     inputs.files configurations.obfTool
-    inputs.file file('tools/StringObf.java')
     outputs.file strObfDevJar
 
-    doLast {
-        def toolCp = configurations.obfTool.asPath
-        def toolOut = layout.buildDirectory.dir('release/strobf-tool').get().asFile
-        toolOut.mkdirs()
-        exec {
-            commandLine 'javac', '-cp', toolCp, '-d', toolOut.absolutePath, file('tools/StringObf.java').absolutePath
-        }
-        exec {
-            commandLine 'java', '-cp', "${toolOut.absolutePath}${File.pathSeparator}${toolCp}",
-                    'StringObf',
-                    obfuscatedDevJar.get().asFile.absolutePath,
-                    strObfDevJar.get().asFile.absolutePath
-        }
-    }
+    classpath = files(strObfToolDir) + configurations.obfTool
+    mainClass = 'StringObf'
+    args = [
+            obfuscatedDevJar.get().asFile.absolutePath,
+            strObfDevJar.get().asFile.absolutePath
+    ]
 }
 
 // Writes the named compile/runtime classpath (Minecraft + Fabric + libraries,
