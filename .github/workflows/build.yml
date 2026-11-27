@@ -48,6 +48,20 @@ jobs:
           set -o pipefail
           ./gradlew remapJar --no-daemon -Prelease 2>&1 | tee release.log
 
+      # Run the real JVM bytecode verifier over the obfuscated (pre-remap) classes
+      # without launching Minecraft. This catches the VerifyError class of bug that
+      # crashed the mod at load. Fails the build if any class fails verification.
+      - name: Verify bytecode loads (JVM verifier)
+        run: |
+          set -o pipefail
+          ./gradlew printReleaseLibs --no-daemon -Prelease
+          LIBS="$(cat build/release/libs-classpath.txt)"
+          OBF_JAR=build/release/loot-client-obf-dev.jar
+          echo "Obfuscated (pre-remap) jar: $OBF_JAR"
+          mkdir -p build/verifytool
+          javac -d build/verifytool .github/VerifyClasses.java
+          java -cp build/verifytool VerifyClasses "$OBF_JAR" "$LIBS"
+
       # Isolate ONLY the obfuscated, remapped main jar. Loom's `jar` task
       # re-creates a readable `-dev.jar` in build/libs; it must never be
       # shipped, so copy out just the unclassified jar.

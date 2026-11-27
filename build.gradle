@@ -106,6 +106,18 @@ tasks.register('proguardRelease', ProGuardTask) {
     printmapping layout.buildDirectory.file('release/mapping.txt')
 }
 
+// Writes the named compile/runtime classpath (Minecraft + Fabric + libraries,
+// minus our own output) to a file, so CI can run the JVM bytecode verifier over
+// the pre-remap obfuscated jar against the exact types it was compiled against.
+tasks.register('printReleaseLibs') {
+    def out = layout.buildDirectory.file('release/libs-classpath.txt')
+    def libs = sourceSets.main.runtimeClasspath.minus(sourceSets.main.output)
+    outputs.file(out)
+    doLast {
+        out.get().asFile.text = libs.asPath
+    }
+}
+
 // When -Prelease is set, feed ProGuard's output into the existing remap step
 // so the published jar goes through the exact same remap path as a debug jar,
 // just with obfuscated input.
