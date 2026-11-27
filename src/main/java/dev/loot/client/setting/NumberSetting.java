@@ -50,8 +50,16 @@ public class NumberSetting extends Setting<Double> {
 
     @Override
     public String display() {
-        return step >= 1 ? String.valueOf(getInt()) : String.format("%.2f", value);
+        // cached: the menu asks for this every frame and String.format is slow
+        if (shown == null || shownFor != value.doubleValue()) {
+            shownFor = value;
+            shown = step >= 1 ? String.valueOf(getInt()) : String.format("%.2f", value);
+        }
+        return shown;
     }
+
+    private double shownFor;
+    private String shown;
 
     @Override
     public JsonElement toJson() {

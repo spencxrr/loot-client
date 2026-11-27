@@ -49,26 +49,35 @@ public class BlockPickerScreen extends Screen {
         vh = (int) (super.height / scale);
     }
 
-    private List<Block> cached;
-    private String cachedKey;
+    /** A block with its icon and labels resolved once, instead of every frame. */
+    private record Entry(Block block, ItemStack icon, String name, String id) {}
 
-    private List<Block> matches() {
-        String key = query + "|" + setting.get().hashCode();
-        if (key.equals(cachedKey)) return cached;
-        cachedKey = key;
+    private List<Entry> cached;
+    private String cachedKey;
+    private final Anim scrollAnim = new Anim(0f);
+    private long lastFrame;
+
+    /**
+     * Rebuilt only when the search changes. Selected blocks are sorted first at that point, but
+     * toggling one doesn't reshuffle the list, so a block doesn't jump away from under the mouse.
+     */
+    private List<Entry> matches() {
+        if (query.equals(cachedKey)) return cached;
+        cachedKey = query;
         cached = compute();
         return cached;
     }
 
-    private List<Block> compute() {
+    private List<Entry> compute() {
         String q = query.toLowerCase(Locale.ROOT).replace(' ', '_');
-        List<Block> selected = new ArrayList<>(), rest = new ArrayList<>();
+        List<Entry> selected = new ArrayList<>(), rest = new ArrayList<>();
         for (Block b : Registries.BLOCK) {
             String id = Registries.BLOCK.getId(b).getPath();
-            String name = b.getName().getString().toLowerCase(Locale.ROOT).replace(' ', '_');
+            String display = b.getName().getString();
+            String name = display.toLowerCase(Locale.ROOT).replace(' ', '_');
             if (!q.isEmpty() && !id.contains(q) && !name.contains(q)) continue;
             if (b.getDefaultState().isAir()) continue;
-            (setting.contains(b) ? selected : rest).add(b);
+            (setting.contains(b) ? selected : rest).add(new Entry(b, new ItemStack(b.asItem()), display, id));
         }
         selected.addAll(rest);
         return selected;
@@ -83,7 +92,7 @@ public class BlockPickerScreen extends Screen {
     }
 
     private int listHeight() {
-        return vh - listTop() - 30;
+        return Math.max(ROW, vh - listTop() - 30);
     }
 
     @Override
@@ -106,29 +115,35 @@ public class BlockPickerScreen extends Screen {
         String shown = query.isEmpty() ? "Type to search any block..." : query + ((System.currentTimeMillis() / 500) % 2 == 0 ? "|" : "");
         UI.drawText(ctx, shown, x + 12, y + 11, query.isEmpty() ? Theme.TEXT_FAINT : Theme.TEXT);
 
-        List<Block> list = matches();
+        List<Entry> list = matches();
         int top = listTop(), h = listHeight();
         int content = list.size() * ROW;
         scroll = MathHelper.clamp(scroll, 0, Math.max(0, content - h));
+        long now = System.currentTimeMillis();
+        float dt = lastFrame == 0 ? 0f : Math.min(0.1f, (now - lastFrame) / 1000f);
+        lastFrame = now;
+        int smooth = Math.round(scrollAnim.update(scroll, 18f, dt));
         UI.roundRect(ctx, x, top, x + W, top + h + 5, 5, Theme.SURFACE, false, true);
         ctx.enableScissor(x, top, x + W, top + h);
-        int ry = top - scroll;
-        for (Block b : list) {
+        int ry = top - smooth;
+        for (Entry e : list) {
             if (ry + ROW >= top && ry <= top + h) {
+                Block b = e.block();
                 boolean on = setting.contains(b);
                 boolean hover = mx >= x && mx < x + W && my >= ry && my < ry + ROW && my >= top && my < top + h;
                 if (hover) ctx.fill(x, ry, x + W, ry + ROW, Theme.ROW_HOVER);
                 else if (on) ctx.fill(x, ry, x + W, ry + ROW, Theme.ROW_ACTIVE);
                 if (on) ctx.fill(x, ry + 3, x + 2, ry + ROW - 3, Theme.ACCENT);
-                ItemStack icon = new ItemStack(b.asItem());
+                ItemStack icon = e.icon();
                 if (!icon.isEmpty()) {
                     m.pushMatrix();
                     m.translate(x + 8, ry + 1);
                     ctx.drawItem(icon, 0, 0);
                     m.popMatrix();
                 }
-                UI.drawText(ctx, b.getName().getString(), x + 30, ry + 5, on ? Theme.ACCENT : Theme.TEXT);
-                UI.drawTextRight(ctx, Registries.BLOCK.getId(b).getPath(), x + W - 28, ry + 5, Theme.TEXT_FAINT);
+                int nameW = Math.min(UI.width(e.name()), (W - 60) * 3 / 5);
+                UI.drawText(ctx, UI.ellipsize(e.name(), nameW), x + 30, ry + 5, on ? Theme.ACCENT : Theme.TEXT);
+                UI.drawTextRight(ctx, UI.ellipsize(e.id(), W - 60 - nameW - 8), x + W - 28, ry + 5, Theme.TEXT_FAINT);
                 UI.toggle(ctx, x + W - 24, ry + 5, on ? 1 : 0);
             }
             ry += ROW;
@@ -145,10 +160,10 @@ public class BlockPickerScreen extends Screen {
         double mx = click.x() / scale, my = click.y() / scale;
         int x = x0(), top = listTop(), h = listHeight();
         if (mx >= x && mx < x + W && my >= top && my < top + h) {
-            int index = (int) ((my - top + scroll) / ROW);
-            List<Block> list = matches();
+            int index = (int) ((my - top + scrollAnim.value) / ROW);
+            List<Entry> list = matches();
             if (index >= 0 && index < list.size()) {
-                setting.toggle(list.get(index));
+                setting.toggle(list.get(index).block());
                 return true;
             }
         }
@@ -157,7 +172,7 @@ public class BlockPickerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double horizontal, double vertical) {
-        scroll -= (int) (vertical * ROW * 2);
+        scroll = MathHelper.clamp(scroll - (int) (vertical * ROW * 2), 0, Math.max(0, matches().size() * ROW - listHeight()));
         return true;
     }
 
