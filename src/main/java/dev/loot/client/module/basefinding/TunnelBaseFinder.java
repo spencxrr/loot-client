@@ -3,6 +3,7 @@ package dev.loot.client.module.basefinding;
 import dev.loot.client.module.Category;
 import dev.loot.client.render.Render3D;
 import dev.loot.client.setting.BoolSetting;
+import dev.loot.client.setting.ModeSetting;
 import dev.loot.client.setting.NumberSetting;
 import dev.loot.client.util.ChatUtil;
 import net.minecraft.block.Block;
@@ -36,11 +37,13 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
 
     private final NumberSetting minLength = add(new NumberSetting("MinLength", "Straight blocks needed to count as a tunnel.", 12, 5, 64, 1));
     private final NumberSetting maxY = add(new NumberSetting("MaxY", "Only look below this height.", 60, -64, 320, 1));
+    private final ModeSetting size = add(new ModeSetting("Size", "Tunnel cross-section: 1x2 strip mines, 2x2 and 3x3 dug highways and nether tunnels.", "1x2", "1x2", "2x2", "3x3", "All"));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new tunnels.", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 35, 0, 255, 5));
 
     public TunnelBaseFinder() {
         super("Tunnel Base Finder", "Finds straight, hand-dug tunnels underground.", Category.BASEFINDING);
+        size.onChange(this::rescanAll);
     }
 
     @Override
@@ -61,44 +64,62 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         return rocks.contains(s.getBlock());
     }
 
-    /** Air 2 tall with rock floor, ceiling and both walls, for a corridor running along x (alongX) or z. */
-    private boolean corridor(ChunkView v, int x, int y, int z, boolean alongX) {
-        if (!v.air(x, y, z) || !v.air(x, y + 1, z)) return false;
-        if (!rock(v.get(x, y - 1, z)) || !rock(v.get(x, y + 2, z))) return false;
-        int dx = alongX ? 0 : 1, dz = alongX ? 1 : 0;
-        return rock(v.get(x + dx, y, z + dz)) && rock(v.get(x - dx, y, z - dz))
-            && rock(v.get(x + dx, y + 1, z + dz)) && rock(v.get(x - dx, y + 1, z - dz));
+    /**
+     * A w-wide, h-tall slice of air with rock floor, ceiling and both walls, for a corridor running
+     * along x (alongX) or z. (x, z) is the slice's first column; the rest extend in +perpendicular.
+     */
+    private static boolean corridor(ChunkView v, int x, int y, int z, boolean alongX, int w, int h) {
+        int px = alongX ? 0 : 1, pz = alongX ? 1 : 0;
+        for (int i = 0; i < w; i++) {
+            int cx = x + px * i, cz = z + pz * i;
+            for (int j = 0; j < h; j++) if (!v.air(cx, y + j, cz)) return false;
+            if (!rock(v.get(cx, y - 1, cz)) || !rock(v.get(cx, y + h, cz))) return false;
+        }
+        for (int j = 0; j < h; j++) {
+            if (!rock(v.get(x - px, y + j, z - pz))) return false;
+            if (!rock(v.get(x + px * w, y + j, z + pz * w))) return false;
+        }
+        return true;
     }
 
     @Override
     protected List<Tunnel> scan(WorldChunk chunk) {
-        ChunkView v = new ChunkView(chunk);
         List<Tunnel> out = new ArrayList<>();
-        int top = Math.min(maxY.getInt(), v.topY() - 3);
+        String mode = size.get();
+        if (mode.equals("All")) {
+            for (int[] s : new int[][]{{1, 2}, {2, 2}, {3, 3}}) scanSize(chunk, s[0], s[1], out);
+        } else {
+            scanSize(chunk, mode.charAt(0) - '0', mode.charAt(2) - '0', out);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    private void scanSize(WorldChunk chunk, int w, int h, List<Tunnel> out) {
+        ChunkView v = new ChunkView(chunk);
+        int top = Math.min(maxY.getInt(), v.topY() - 1 - h);
         int need = minLength.getInt();
         for (int y = v.bottomY() + 1; y <= top; y++) {
             for (int a = 0; a < 16; a++) {
                 for (int b = 0; b < 16; b++) {
                     // along x: row z = a, start x = b
-                    if (corridor(v, b, y, a, true) && !corridor(v, b - 1, y, a, true)) {
+                    if (corridor(v, b, y, a, true, w, h) && !corridor(v, b - 1, y, a, true, w, h)) {
                         int len = 1;
-                        while (len < MAX_FOLLOW && corridor(v, b + len, y, a, true)) len++;
-                        if (len >= need) out.add(new Tunnel(v.world(b, y, a), v.world(b + len - 1, y, a)));
+                        while (len < MAX_FOLLOW && corridor(v, b + len, y, a, true, w, h)) len++;
+                        if (len >= need) out.add(new Tunnel(v.world(b, y, a), v.world(b + len - 1, y + h - 2, a + w - 1)));
                         b += len - 1;
                     }
                 }
                 for (int b = 0; b < 16; b++) {
                     // along z: column x = a, start z = b
-                    if (corridor(v, a, y, b, false) && !corridor(v, a, y, b - 1, false)) {
+                    if (corridor(v, a, y, b, false, w, h) && !corridor(v, a, y, b - 1, false, w, h)) {
                         int len = 1;
-                        while (len < MAX_FOLLOW && corridor(v, a, y, b + len, false)) len++;
-                        if (len >= need) out.add(new Tunnel(v.world(a, y, b), v.world(a, y, b + len - 1)));
+                        while (len < MAX_FOLLOW && corridor(v, a, y, b + len, false, w, h)) len++;
+                        if (len >= need) out.add(new Tunnel(v.world(a, y, b), v.world(a + w - 1, y + h - 2, b + len - 1)));
                         b += len - 1;
                     }
                 }
             }
         }
-        return out.isEmpty() ? null : out;
     }
 
     @Override

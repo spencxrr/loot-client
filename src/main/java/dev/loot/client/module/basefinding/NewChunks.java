@@ -38,15 +38,20 @@ public class NewChunks extends ChunkScanModule<Integer> {
 
     private final BoolSetting showNew = add(new BoolSetting("New", "Show newly generated chunks (red).", true));
     private final BoolSetting showOld = add(new BoolSetting("Old", "Show chunks that were loaded before (green).", true));
-    private final BoolSetting showOldGen = add(new BoolSetting("OldGen", "Show chunks generated before 1.18 (yellow), overworld only.", true));
+    private final BoolSetting showOldGen = add(new BoolSetting("OldGen", "Show chunks generated before 1.18 (lavender), overworld only.", true));
     private final ModeSetting height = add(new ModeSetting("DrawAt", "Draw squares below you or at a fixed height.", "Fixed", "BelowMe", "Fixed"));
     private final NumberSetting fixedY = add(new NumberSetting("FixedY", "Height for DrawAt Fixed.", 0, -64, 320, 1));
     private final NumberSetting range = add(new NumberSetting("Range", "Max distance drawn, in chunks.", 64, 8, 256, 8));
+    private final BoolSetting trails = add(new BoolSetting("Trails", "Highlight old chunks running through new terrain (someone's path) in cyan.", true));
+    private final NumberSetting trailLength = add(new NumberSetting("TrailLength", "Connected trail chunks needed before it alerts.", 6, 3, 40, 1));
+    private final BoolSetting trailAlert = add(new BoolSetting("TrailAlert", "Chat + sound when a trail is found, with the way it heads.", true));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Square opacity.", 55, 10, 255, 5));
 
     /** Filled from the network thread. */
     private final Set<Long> fresh = ConcurrentHashMap.newKeySet();
     private ClientWorld lastWorld;
+    private Set<Long> trail = Set.of();
+    private final Set<Long> trailAlerted = new java.util.HashSet<>();
 
     public NewChunks() {
         super("New Chunks", "Shows new vs old chunks so you can follow trails.", Category.BASEFINDING);
@@ -121,14 +126,70 @@ public class NewChunks extends ChunkScanModule<Integer> {
             lastWorld = mc.world;
             results.clear();
             fresh.clear();
+            trail = Set.of();
+            trailAlerted.clear();
         }
         super.onTick();
+        if (trails.get() && mc.player.age % 40 == 0) findTrails();
         // forget things far behind you so a long flight doesn't grow memory forever
         if (mc.player.age % 200 == 0) {
             ChunkPos c = mc.player.getChunkPos();
             int max = range.getInt() * 2;
             prune(results.keySet().iterator(), c, max);
             prune(fresh.iterator(), c, max);
+        }
+    }
+
+    private boolean isOld(long k) {
+        Integer t = results.get(k);
+        return t != null && !fresh.contains(k);
+    }
+
+    /**
+     * A trail chunk is an old chunk with new chunks on at least three sides around it: a strip of
+     * already-visited terrain through fresh world. Long connected strips are someone's route.
+     */
+    private void findTrails() {
+        Set<Long> found = new java.util.HashSet<>();
+        for (long k : results.keySet()) {
+            if (!isOld(k)) continue;
+            int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k), news = 0;
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                    if ((dx != 0 || dz != 0) && fresh.contains(ChunkPos.toLong(cx + dx, cz + dz))) news++;
+            if (news >= 3) found.add(k);
+        }
+        trail = found;
+        if (!trailAlert.get()) return;
+        Set<Long> seen = new java.util.HashSet<>();
+        for (long start : found) {
+            if (!seen.add(start)) continue;
+            java.util.List<Long> group = new java.util.ArrayList<>();
+            java.util.ArrayDeque<Long> stack = new java.util.ArrayDeque<>();
+            stack.push(start);
+            while (!stack.isEmpty()) {
+                long k = stack.pop();
+                group.add(k);
+                int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++) {
+                        long n = ChunkPos.toLong(cx + dx, cz + dz);
+                        if (found.contains(n) && seen.add(n)) stack.push(n);
+                    }
+            }
+            if (group.size() < trailLength.getInt() || group.stream().anyMatch(trailAlerted::contains)) continue;
+            trailAlerted.addAll(group);
+            int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+            for (long k : group) {
+                minX = Math.min(minX, ChunkPos.getPackedX(k));
+                maxX = Math.max(maxX, ChunkPos.getPackedX(k));
+                minZ = Math.min(minZ, ChunkPos.getPackedZ(k));
+                maxZ = Math.max(maxZ, ChunkPos.getPackedZ(k));
+            }
+            String axis = maxX - minX >= maxZ - minZ ? "east-west" : "north-south";
+            dev.loot.client.util.ChatUtil.coords("Trail of " + group.size() + " old chunks (" + axis + ") at",
+                ((minX + maxX) / 2 << 4) + 8, 64, ((minZ + maxZ) / 2 << 4) + 8);
+            dev.loot.client.util.ChatUtil.ping();
         }
     }
 
@@ -155,8 +216,9 @@ public class NewChunks extends ChunkScanModule<Integer> {
             long k = e.getKey();
             if (fresh.contains(k) || far(k, c, max)) continue;
             int type = e.getValue();
-            if (type == OLD && showOld.get()) square(r, k, y, alpha | 0x5CE68A);
-            else if (type == OLD_GEN && showOldGen.get()) square(r, k, y, alpha | 0xFFD24D);
+            if (trails.get() && trail.contains(k)) square(r, k, y, (Math.min(255, fill.getInt() + 60) << 24) | 0x3DF5FF);
+            else if (type == OLD && showOld.get()) square(r, k, y, alpha | 0x5CE68A);
+            else if (type == OLD_GEN && showOldGen.get()) square(r, k, y, alpha | 0xB18CFF);
         }
     }
 
@@ -171,6 +233,6 @@ public class NewChunks extends ChunkScanModule<Integer> {
 
     @Override
     public String getInfo() {
-        return fresh.size() + "/" + results.size();
+        return fresh.size() + "/" + results.size() + (trail.isEmpty() ? "" : " trail " + trail.size());
     }
 }
