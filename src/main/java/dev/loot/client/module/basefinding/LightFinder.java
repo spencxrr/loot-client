@@ -42,8 +42,12 @@ import java.util.Set;
  *    this catches lit rooms you can't otherwise see. Each one has to show up on two scans a few
  *    seconds apart before it counts, so a torch you just broke doesn't trigger it.
  *
- * Natural light (lava, fire, glow lichen, glow berries, amethyst, sculk, nether glowstone...)
- * is ignored and also counts as an explanation for nearby light. Structure chunks and spawn can
+ * Only artificial or unexplained light ever counts. Natural light (lava and lava falls, fire,
+ * magma, glow lichen, glow berries, amethyst, sculk, sea pickles, lit redstone ore, nether
+ * glowstone and shroomlight, end rods in the end) is never a "placed light", and any light-giving
+ * block within reach of a bright spot explains it, so lit caves never become hidden light. A
+ * spot whose possible source lies in an unloaded chunk is never flagged either. The rules live
+ * in {@link LightMath} and are unit tested. Structure chunks and spawn can
  * be skipped. Hits are fed into Sus Chunk Finder so they join the same base list, beams and HUD.
  */
 public class LightFinder extends ChunkScanModule<LightFinder.Result> {
@@ -188,7 +192,7 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
         int minY = Integer.MAX_VALUE, maxYFound = Integer.MIN_VALUE;
         boolean anyLight = false, lightMissing = false;
         int candidates = 0, mismatched = 0;
-        BlockPos.Mutable probe = new BlockPos.Mutable();
+        LightMath.Grid grid = new WorldGrid(world, blockLight);
 
         ChunkSection[] sections = chunk.getSectionArray();
         for (int i = 0; i < sections.length; i++) {
@@ -213,6 +217,8 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
                             // a bright light whose own cell is dark means the server isn't sending real light
                             if (haveLight && s.getLuminance() >= 10 && light.get(x, y, z) < s.getLuminance() - 2) mismatched++;
                             if (useSky && sky != null && !sky.isUninitialized() && maxSky(sky, x, y, z) > 0) continue; // the sky reaches it
+                            // belt and braces for missing sky data: nothing at or above the surface counts
+                            if (useSky && by + y >= chunk.sampleHeightmap(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING, x, z) - 1) continue;
                             marks.add(new Mark(new BlockPos(bx + x, by + y, bz + z), kind));
                             if (kind == PLACED) placed++;
                             else lit++;
@@ -239,10 +245,11 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
                         if (useSky && sky != null && !sky.isUninitialized() && sky.get(x, y, z) > 0) continue;
                         int wx = bx + x, wy = by + y, wz = bz + z;
                         if (nearMark(marks, wx, wy, wz, 4)) continue;
-                        if (explained(world, probe, wx, wy, wz, 16 - level)) continue;
+                        // any light-giving block in reach (lava, glow berries, lichen, fire...) explains it
+                        if (LightMath.explained(grid, wx, wy, wz, level)) continue;
                         candidates++;
                         // real light falls off by exactly one per block; random or flat fake light doesn't
-                        if (!realGradient(blockLight, world, probe, wx, wy, wz, level)) continue;
+                        if (!LightMath.realGradient(grid, wx, wy, wz, level)) continue;
                         if (hiddenCount < 16) marks.add(new Mark(new BlockPos(wx, wy, wz), HIDDEN));
                         hiddenCount++;
                         minY = Math.min(minY, wy);
@@ -279,28 +286,31 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
         return false;
     }
 
-    /** Real block light: some neighbour is exactly one dimmer, and no non-opaque neighbour jumps by more than one. */
-    private static boolean realGradient(ChunkLightingView view, World world, BlockPos.Mutable probe, int x, int y, int z, int level) {
-        boolean dimmer = false;
-        for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.values()) {
-            probe.set(x + d.getOffsetX(), y + d.getOffsetY(), z + d.getOffsetZ());
-            int n = view.getLightLevel(probe);
-            if (n == level - 1) dimmer = true;
-            else if (Math.abs(n - level) > 1 && !world.getBlockState(probe).isOpaqueFullCube()) return false;
+    /** The live world seen through {@link LightMath.Grid}; unloaded chunks report as not loaded. */
+    private record WorldGrid(World world, ChunkLightingView light, BlockPos.Mutable pos) implements LightMath.Grid {
+        WorldGrid(World world, ChunkLightingView light) {
+            this(world, light, new BlockPos.Mutable());
         }
-        return dimmer;
-    }
 
-    /** Is there any light-giving block (player or natural) close enough to cause this light? */
-    private static boolean explained(World world, BlockPos.Mutable probe, int x, int y, int z, int r) {
-        for (int dy = -r; dy <= r; dy++)
-            for (int dx = -r; dx <= r; dx++)
-                for (int dz = -r; dz <= r; dz++) {
-                    if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > r) continue;
-                    probe.set(x + dx, y + dy, z + dz);
-                    if (world.getBlockState(probe).getLuminance() > 0) return true;
-                }
-        return false;
+        @Override
+        public boolean loaded(int x, int y, int z) {
+            return world.getChunkManager().isChunkLoaded(x >> 4, z >> 4);
+        }
+
+        @Override
+        public int luminance(int x, int y, int z) {
+            return world.getBlockState(pos.set(x, y, z)).getLuminance();
+        }
+
+        @Override
+        public int light(int x, int y, int z) {
+            return light.getLightLevel(pos.set(x, y, z));
+        }
+
+        @Override
+        public boolean opaque(int x, int y, int z) {
+            return world.getBlockState(pos.set(x, y, z)).isOpaqueFullCube();
+        }
     }
 
     // ---- scoring (main thread) ----
