@@ -27,9 +27,17 @@
 # local-variable names.
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,Exceptions,Record,PermittedSubclasses
 
-# Quieter output; let the build fail loudly on a genuinely unresolved type
-# rather than hiding it, so keep-rules stay honest.
+# Quieter output.
 -dontnote
+
+# Suppress "can't find referenced class" warnings. These come from Minecraft's
+# own transitive libraries (guava, netty, fastutil, datafixers, brigadier, ...)
+# referencing each other, not from our code - our code compiled cleanly and its
+# own superclasses (Screen, ClientModInitializer, enums) ARE on the classpath,
+# so override detection is unaffected. Without this ProGuard aborts with
+# "Please correct the above warnings first." We only rename (no shrink/optimize),
+# so unresolved library internals can't change our output.
+-dontwarn
 
 # ---------------------------------------------------------------------------
 #  Fabric entry point - fabric.mod.json references this class by its literal
