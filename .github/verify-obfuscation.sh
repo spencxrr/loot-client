@@ -69,22 +69,30 @@ else
   bad "LootClient.onInitializeClient() missing after obfuscation"
 fi
 
-echo
-echo "---- evidence: a renamed combat class (members should be gibberish) ----"
-OBF_CLASS="$(grep -E '^dev/loot/client/module/combat/[a-z0-9$]{1,3}\.class$' <<<"$LIST" | head -1 || true)"
-if [ -n "$OBF_CLASS" ]; then
-  unzip -q -o "$JAR" "$OBF_CLASS" -d "$TMP"
-  javap -p -classpath "$TMP" "${OBF_CLASS%.class}" | sed 's#/#.#g' | head -20 || true
-else
-  echo "  (no single-letter class found under module/combat - check mapping.txt)"
-fi
 rm -rf "$TMP"
 
 echo
+echo "---- evidence: sample of the original -> obfuscated name mapping ----"
+MAP=""
+for cand in "$(dirname "$JAR")/mapping.txt" "build/release/mapping.txt"; do
+  [ -f "$cand" ] && { MAP="$cand"; break; }
+done
+if [ -n "$MAP" ]; then
+  echo "  (from $MAP)"
+  grep -E '^dev\.loot\.client\.(module|util|setting|gui|render)\.' "$MAP" | head -10 || true
+else
+  echo "  (mapping.txt not found next to jar - skipping sample)"
+fi
+
+echo
 echo "---- class-name readability (fewer readable = more obfuscated) ----"
-total=$(grep -c '^dev/loot/client/.*\.class$' <<<"$LIST" || true)
-readable=$(grep -E '^dev/loot/client/.*/[A-Z][A-Za-z0-9]+\.class$' <<<"$LIST" | grep -v '/mixin/' | grep -v 'LootClient.class' | wc -l | tr -d ' ')
-echo "  total client classes: $total ; still-readable non-mixin names: $readable"
+# grep returns 1 when it finds nothing, which is the GOOD case here, so guard
+# every count against set -e / pipefail.
+total=$( { grep -c '^dev/loot/client/.*\.class$' <<<"$LIST" || true; } )
+readable=$( { grep -E '^dev/loot/client/.*/[A-Z][A-Za-z0-9]+\.class$' <<<"$LIST" \
+             | grep -v '/mixin/' | grep -vc 'LootClient.class' || true; } )
+echo "  total client classes: ${total:-0} ; still-readable non-mixin CamelCase names: ${readable:-0}"
+echo "  (kept on purpose: LootClient + the 19 mixin classes)"
 
 echo "=============================================================="
 if [ "$fail" -ne 0 ]; then
