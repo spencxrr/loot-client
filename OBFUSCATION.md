@@ -13,11 +13,11 @@ CI builds both on every push and uploads them as the **loot-client-debug** and
 
 ## How it works
 
-The release build inserts a [ProGuard](https://www.guardsquare.com/proguard)
-pass between compilation and Loom's remap step:
+The release build inserts two obfuscation passes between compilation and Loom's
+remap step:
 
 ```
-compile (yarn-named) ──► ProGuard (rename + strip) ──► Loom remapJar (intermediary) ──► release jar
+compile (yarn-named) ──► ProGuard (rename + strip) ──► StringObf (encrypt strings) ──► Loom remapJar (intermediary) ──► release jar
 ```
 
 ProGuard runs **before** the remap on purpose. At that point the full
@@ -39,6 +39,33 @@ What it deliberately **keeps** so the mod still loads:
 - Enum `values()`/`valueOf()`.
 - `fabric.mod.json`, `lootclient.mixins.json`, the refmap and all assets.
 
+### String encryption (`tools/StringObf.java`)
+
+ProGuard renames code but leaves every string literal in plaintext, and those
+strings (module names, setting labels, block names, serialization keys) are
+enough to re-label the whole renamed codebase by hand. The second pass, an ASM
+transform, fixes that: for each string literal in our own non-mixin classes it
+replaces `LDC "text"` with `LDC "<encrypted>"` + a call to a generated
+`dev.loot.client.Decoder`, so the constant pool no longer carries readable
+strings. On the current build this encrypts ~1000 strings across ~106 classes.
+
+Why it is safe to load:
+
+- It only inserts a `String -> String` call where a `String` was already on the
+  stack, so the operand-stack shape is unchanged and the existing stack-map
+  frames stay valid. It uses ASM `COMPUTE_MAXS` only, never `COMPUTE_FRAMES`, so
+  it never needs to resolve Minecraft types (resolving them with an incomplete
+  classpath is what produced the earlier load-time `VerifyError`). CI runs the
+  real JVM verifier over the result and fails the build on any `VerifyError`.
+- The decoder `intern()`s its result, so a decoded string is the same instance
+  as an equal literal elsewhere - any `str == "literal"` identity check in the
+  code keeps working.
+- The runtime value is identical to the original, so config keys, reflection by
+  name and enum names are unaffected.
+- **Mixins are skipped** (Mixin matches classes/members by name and reads
+  annotation + refmap strings), so their strings remain readable - acceptable,
+  since the mixin package is kept readable anyway.
+
 ## What this actually buys you (honest version)
 
 This is a **client-side** mod: it runs entirely on the user's machine, so a
@@ -47,28 +74,41 @@ no such thing as an uncrackable client. What obfuscation does is raise the
 cost:
 
 - **Casual "skids"** who just decompile-and-rename-package get an unreadable
-  wall of `a.b(c)` with no line numbers. That stops most copy-paste reuse.
-- **Serious reversers** can still recover behaviour with effort. Renaming
-  slows them down; it does not stop them.
+  wall of `a.b(c)` with no line numbers and no readable strings to orient from.
+  That stops most copy-paste reuse.
+- **Serious reversers** can still recover behaviour with effort. Renaming and
+  string encryption slow them down and force them to run the code to recover
+  strings; they do not stop them.
+
+This was measured, not guessed: CI decompiles our own shipped jar on every build
+(the "Self-crack analysis" step) so the real protection level is visible in the
+log. Before string encryption, the decompile printed every setting and block
+name in plaintext. After it, those are gibberish and the decompiler even fails
+outright on some methods.
 
 So: good deterrent against low-effort theft, not a guarantee.
 
 ## Limits and tradeoffs you should know
 
-- **String literals are NOT encrypted.** Module names (`"Auto Crystal"`), chat
-  command text, URLs, etc. are still readable with `strings`. String
-  encryption was left out on purpose: the free tools that do it are fragile
-  with Fabric + mixins and frequently trip antivirus false-positives on a
-  sideloaded jar, which would hurt a public release more than it helps. It can
-  be added as an opt-in later, with in-game testing. Same goes for
-  control-flow flattening and code optimization (`-dontoptimize` is set for
-  safety).
+- **Logic is not hidden.** Renaming and string encryption hide *names* and
+  *strings*, not control flow. A decompiler still reconstructs the shape of each
+  method, so a determined reverser can follow what the code does - they just
+  have to label it themselves. Control-flow flattening would raise that bar but
+  is high-risk (it rewrites method bodies and needs real in-game testing) and is
+  not enabled. `-dontoptimize`/`-dontshrink` are set for the same safety reason.
+- **Some strings still leak.** Java records store their component-name list
+  (e.g. `"speed;pitchOffset;gravity;..."`) in an `invokedynamic` bootstrap, not
+  a string constant, so StringObf cannot touch it without breaking the record;
+  mixin strings are also left readable on purpose. These give structural hints
+  but no longer a labeled map of the client.
 - **Harder debugging.** User crash reports from the release jar will show
   obfuscated names. Use `mapping.txt` to translate them back (below).
-- **Not runtime-tested in CI.** CI proves the jar builds and that the entry
-  point + mixins survive with their names, but it does not launch Minecraft.
-  **Test the release jar in-game before publishing a release** - that's the
-  only way to confirm every mixin still applies.
+- **Load is CI-verified; behaviour is not.** CI runs the real JVM bytecode
+  verifier over the final obfuscated + string-encrypted classes and fails on any
+  `VerifyError`, so "it loads" is proven automatically. CI does **not** launch
+  Minecraft, so it cannot prove every feature still behaves. **Smoke-test the
+  release jar in-game before publishing** - especially config save/load,
+  keybinds and anything that compares strings.
 
 ## Deobfuscating a crash report
 

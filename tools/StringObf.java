@@ -189,6 +189,12 @@ public final class StringObf {
         d.visitInsn(Opcodes.DUP);
         d.visitVarInsn(Opcodes.ALOAD, 1);
         d.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/String", "<init>", "([C)V", false);
+        // intern() so the decoded value is the same instance the JVM uses for an
+        // equal literal elsewhere. Decoding yields a fresh String, which would
+        // break any `str == "literal"` identity check in the code; interning
+        // restores identity equality against literal-pool strings (including the
+        // untouched mixin classes). Cheap at ~1000 strings, decoded once on use.
+        d.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "intern", "()Ljava/lang/String;", false);
         d.visitInsn(Opcodes.ARETURN);
         d.visitMaxs(0, 0);
         d.visitEnd();
