@@ -51,20 +51,24 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
 
     record Mark(BlockPos pos, int kind) {}
 
-    public record Result(List<Mark> marks, int placed, int furnaces, int hidden, int confirmedHidden, int minY, int maxY, int score, boolean structure) {}
+    public record Result(List<Mark> marks, int placed, int furnaces, int hidden, int confirmedHidden, int minY, int maxY, int score, boolean structure, boolean fakeLight) {}
 
+    private final NumberSetting sensitivity = add(new NumberSetting("Sensitivity", "Higher flags dimmer, smaller lit spots (and more false alarms).", 6, 1, 10, 1));
     private final ModeSetting underground = add(new ModeSetting("Underground", "Where lights count: under the sky only (SkyLight), below MaxY, or anywhere.", "SkyLight", "SkyLight", "BelowY", "Anywhere"));
     private final NumberSetting maxY = add(new NumberSetting("MaxY", "Height limit for Underground BelowY.", 40, -64, 320, 1));
     private final BoolSetting hidden = add(new BoolSetting("HiddenLight", "Flag bright light with no visible source (hidden or fake blocks).", true));
     private final NumberSetting hiddenLevel = add(new NumberSetting("HiddenLevel", "Block light a spot needs to count as hidden light (15 = right next to a source).", 13, 10, 15, 1));
     private final BoolSetting furnaces = add(new BoolSetting("LitFurnaces", "Count furnaces that are burning right now.", true));
-    private final NumberSetting minScore = add(new NumberSetting("MinScore", "Score a chunk needs (placed light 1, lit furnace 3, hidden light 4).", 3, 1, 30, 1));
     private final BoolSetting ignoreStructures = add(new BoolSetting("IgnoreStructures", "Skip chunks with strongholds, ancient cities, trial chambers and other generated lights.", true));
     private final NumberSetting spawnRadius = add(new NumberSetting("SpawnRadius", "Ignore everything this close to 0,0 (overworld blocks; nether is /8). 0 = off.", 1000, 0, 20000, 250));
     private final BoolSetting feedBases = add(new BoolSetting("FeedBaseFinder", "Add light evidence to Sus Chunk Finder's bases (when it's on).", true));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new lit areas (Sus Chunk Finder alerts instead when it's fed).", true));
-    private final NumberSetting range = add(new NumberSetting("Range", "Max render distance.", 256, 16, 1024, 16));
-    private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 50, 0, 255, 5));
+    private final ModeSetting height = add(new ModeSetting("DrawAt", "Draw squares below you (good on elytra) or at a fixed height. Same as Sus Chunk Finder so they layer.", "BelowMe", "BelowMe", "Fixed"));
+    private final NumberSetting fixedY = add(new NumberSetting("FixedY", "Height for DrawAt Fixed.", 64, -64, 320, 1));
+    private final BoolSetting depth = add(new BoolSetting("ShowDepth", "Column showing the Y range the light was found in.", true));
+    private final BoolSetting blockBoxes = add(new BoolSetting("Blocks", "Also box each light, furnace and hidden-light spot up close.", true));
+    private final NumberSetting blockRange = add(new NumberSetting("BlockRange", "Max distance for the block boxes.", 128, 16, 512, 16));
+    private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Square opacity.", 80, 20, 255, 5));
 
     private final Set<Long> alerted = new HashSet<>();
     private final java.util.Map<Long, Integer> lightRetries = new java.util.concurrent.ConcurrentHashMap<>();
@@ -79,6 +83,22 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     protected int refreshRadius() {
         return 2;
     }
+
+    @Override
+    protected boolean keepUnloaded() {
+        // keep finds after flying away, like Sus Chunk Finder
+        return true;
+    }
+
+    private int threshold() {
+        // sensitivity 1 -> 8 points, 6 -> 4, 10 -> 1
+        return Math.max(1, Math.round(9.4f - sensitivity.getFloat() * 0.95f));
+    }
+
+    /** Set once the server's light data stops matching the blocks it sends (stripped or faked light). */
+    private volatile boolean lightLooksFake;
+    private final java.util.concurrent.atomic.AtomicInteger fakeChunks = new java.util.concurrent.atomic.AtomicInteger();
+    private boolean warnedFake;
 
     @Override
     public void onDisable() {
@@ -99,8 +119,12 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     public void onTick() {
         if (mc.world != lastWorld) {
             lastWorld = mc.world;
+            results.clear();
             alerted.clear();
             lightRetries.clear();
+            lightLooksFake = false;
+            warnedFake = false;
+            fakeChunks.set(0);
             SusChunkFinder sus = sus();
             if (sus != null) sus.clearLight();
         }
@@ -163,6 +187,7 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
         int placed = 0, lit = 0, hiddenCount = 0;
         int minY = Integer.MAX_VALUE, maxYFound = Integer.MIN_VALUE;
         boolean anyLight = false, lightMissing = false;
+        int candidates = 0, mismatched = 0;
         BlockPos.Mutable probe = new BlockPos.Mutable();
 
         ChunkSection[] sections = chunk.getSectionArray();
@@ -173,6 +198,8 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             int by = sy << 4;
             if (by > limit) break;
             ChunkNibbleArray sky = useSky ? skyLight.getLightSection(ChunkSectionPos.from(cp.x, sy, cp.z)) : null;
+            ChunkNibbleArray light = blockLight.getLightSection(ChunkSectionPos.from(cp.x, sy, cp.z));
+            boolean haveLight = light != null && !light.isUninitialized();
 
             // placed lights and lit furnaces, straight from the block palette
             if (section.hasAny(s -> classify(s, nether, end) >= 0)) {
@@ -183,6 +210,8 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
                             BlockState s = section.getBlockState(x, y, z);
                             int kind = classify(s, nether, end);
                             if (kind < 0 || kind == FURNACE && !furnaces.get()) continue;
+                            // a bright light whose own cell is dark means the server isn't sending real light
+                            if (haveLight && s.getLuminance() >= 10 && light.get(x, y, z) < s.getLuminance() - 2) mismatched++;
                             if (useSky && sky != null && !sky.isUninitialized() && maxSky(sky, x, y, z) > 0) continue; // the sky reaches it
                             marks.add(new Mark(new BlockPos(bx + x, by + y, bz + z), kind));
                             if (kind == PLACED) placed++;
@@ -194,8 +223,7 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             }
 
             if (!hidden.get()) continue;
-            ChunkNibbleArray light = blockLight.getLightSection(ChunkSectionPos.from(cp.x, sy, cp.z));
-            if (light == null || light.isUninitialized()) {
+            if (!haveLight) {
                 // light for this chunk hasn't arrived yet; look again shortly
                 lightMissing = true;
                 continue;
@@ -212,6 +240,9 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
                         int wx = bx + x, wy = by + y, wz = bz + z;
                         if (nearMark(marks, wx, wy, wz, 4)) continue;
                         if (explained(world, probe, wx, wy, wz, 16 - level)) continue;
+                        candidates++;
+                        // real light falls off by exactly one per block; random or flat fake light doesn't
+                        if (!realGradient(blockLight, world, probe, wx, wy, wz, level)) continue;
                         if (hiddenCount < 16) marks.add(new Mark(new BlockPos(wx, wy, wz), HIDDEN));
                         hiddenCount++;
                         minY = Math.min(minY, wy);
@@ -220,9 +251,17 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             }
         }
         if (lightMissing && !anyLight && lightRetries.merge(cp.toLong(), 1, Integer::sum) <= 5) markDirty(cp.x, cp.z);
+        boolean fake = mismatched >= 2 || candidates > 200;
+        if (fake) {
+            // don't trust light-based evidence from this chunk, keep what the blocks themselves show
+            // a single chunk can just be mid-update; a few of them means the server is doing it on purpose
+            if (fakeChunks.incrementAndGet() >= 3) lightLooksFake = true;
+            marks.removeIf(m -> m.kind() == HIDDEN);
+            hiddenCount = 0;
+        }
         if (marks.isEmpty()) return null;
         boolean structure = ignoreStructures.get() && Structures.detect(chunk) != null;
-        return new Result(marks, placed, lit, hiddenCount, 0, minY, maxYFound, 0, structure);
+        return new Result(marks, placed, lit, hiddenCount, 0, minY, maxYFound, 0, structure, fake);
     }
 
     /** Highest sky light around a non-opaque block (the light block's own cell may read 0 for some blocks). */
@@ -238,6 +277,18 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             if (Math.abs(p.getX() - x) <= r && Math.abs(p.getY() - y) <= r && Math.abs(p.getZ() - z) <= r) return true;
         }
         return false;
+    }
+
+    /** Real block light: some neighbour is exactly one dimmer, and no non-opaque neighbour jumps by more than one. */
+    private static boolean realGradient(ChunkLightingView view, World world, BlockPos.Mutable probe, int x, int y, int z, int level) {
+        boolean dimmer = false;
+        for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.values()) {
+            probe.set(x + d.getOffsetX(), y + d.getOffsetY(), z + d.getOffsetZ());
+            int n = view.getLightLevel(probe);
+            if (n == level - 1) dimmer = true;
+            else if (Math.abs(n - level) > 1 && !world.getBlockState(probe).isOpaqueFullCube()) return false;
+        }
+        return dimmer;
     }
 
     /** Is there any light-giving block (player or natural) close enough to cause this light? */
@@ -269,11 +320,15 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             else markDirty(pos.x, pos.z);
         }
         int score = Math.min(10, r.placed()) + 3 * Math.min(4, r.furnaces()) + 4 * Math.min(4, confirmed);
-        Result out = new Result(r.marks(), r.placed(), r.furnaces(), r.hidden(), confirmed, r.minY(), r.maxY(), score, false);
-        feed(pos.toLong(), score >= minScore.getInt() ? out : null);
+        Result out = new Result(r.marks(), r.placed(), r.furnaces(), r.hidden(), confirmed, r.minY(), r.maxY(), score, false, r.fakeLight());
+        feed(pos.toLong(), score >= threshold() ? out : null);
+        if (lightLooksFake && !warnedFake) {
+            warnedFake = true;
+            ChatUtil.info("Light Finder: this server's light data doesn't match its blocks (anti light-finder?). Hidden light is off for those chunks; placed lights and furnaces still work.");
+        }
         if (counts(out)) announce(pos, out);
         // keep unconfirmed results around (not drawn) so the confirming scan can see them
-        return score >= minScore.getInt() || r.hidden() > 0 ? out : null;
+        return score >= threshold() || r.hidden() > 0 ? out : null;
     }
 
     private void feed(long key, Result r) {
@@ -291,7 +346,7 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     }
 
     private boolean counts(Result r) {
-        return r.score() >= minScore.getInt();
+        return r.score() >= threshold();
     }
 
     private void announce(ChunkPos pos, Result r) {
@@ -313,16 +368,40 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
 
     @Override
     public void onRender3D(Render3D r, float tickDelta) {
-        double maxSq = range.get() * range.get();
-        for (Result res : results.values()) {
+        SusChunkFinder sus = sus();
+        boolean layered = sus != null && sus.isEnabled();
+        double y = height.is("Fixed") ? fixedY.get() : Math.floor(mc.player.getLerpedPos(tickDelta).y) - 12;
+        // with Sus Chunk Finder on, draw a touch higher and inset so its red reads as a ring around our yellow
+        double drawY = layered ? y + 0.02 : y;
+        double inset = layered ? 3 : 0;
+        int strong = threshold() * 3;
+        java.util.function.LongPredicate flagged = k -> {
+            Result res = results.get(k);
+            return res != null && counts(res);
+        };
+        double boxSq = blockRange.get() * blockRange.get();
+        int top = mc.world.getBottomY() + mc.world.getHeight();
+        for (var e : results.entrySet()) {
+            Result res = e.getValue();
             if (!counts(res)) continue;
+            long key = e.getKey();
+            int alpha = (int) Math.min(255, fill.get() * (res.score() >= strong ? 1.3 : 1.0));
+            ChunkHighlight.region(r, key, flagged, drawY, 0xFFD24D, alpha, inset);
+            int x1 = ChunkPos.getPackedX(key) << 4, z1 = ChunkPos.getPackedZ(key) << 4;
+            if (depth.get()) {
+                r.box(new Box(x1 + 3, res.minY(), z1 + 3, x1 + 5, res.maxY() + 1, z1 + 5), 0xFFFFD24D, 40);
+                r.line(x1 + 4, drawY, z1 + 4, x1 + 4, res.maxY() + 1, z1 + 4, 0x99FFD24D);
+            }
+            // a beam on each alerted spot when Sus Chunk Finder isn't there to do it
+            if (!layered && alerted.contains(key)) r.line(x1 + 8, res.minY(), z1 + 8, x1 + 8, top, z1 + 8, 0xCCFFD24D);
+            if (!blockBoxes.get()) continue;
             for (Mark m : res.marks()) {
-                if (m.pos().getSquaredDistance(mc.player.getEntityPos()) > maxSq) continue;
+                if (m.pos().getSquaredDistance(mc.player.getEntityPos()) > boxSq) continue;
                 switch (m.kind()) {
-                    case PLACED -> r.box(new Box(m.pos()), 0xFFFFD27A, fill.getInt());
-                    case FURNACE -> r.box(new Box(m.pos()), 0xFFFF9A3C, fill.getInt());
+                    case PLACED -> r.box(new Box(m.pos()), 0xFFFFD27A, 50);
+                    case FURNACE -> r.box(new Box(m.pos()), 0xFFFF9A3C, 50);
                     default -> {
-                        if (res.confirmedHidden() > 0) r.box(new Box(m.pos()).contract(0.2), 0xFFFF4DFF, fill.getInt());
+                        if (res.confirmedHidden() > 0) r.box(new Box(m.pos()).contract(0.2), 0xFFFF4DFF, 60);
                     }
                 }
             }
@@ -333,6 +412,6 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
     public String getInfo() {
         int n = 0;
         for (Result res : results.values()) if (counts(res)) n++;
-        return String.valueOf(n);
+        return lightLooksFake ? n + " (fake light)" : String.valueOf(n);
     }
 }

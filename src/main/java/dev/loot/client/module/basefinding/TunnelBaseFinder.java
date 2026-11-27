@@ -43,6 +43,11 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         super("Tunnel Base Finder", "Finds straight, hand-dug tunnels underground.", Category.BASEFINDING);
     }
 
+    @Override
+    protected boolean keepUnloaded() {
+        return true; // tunnels stay marked after you fly past
+    }
+
     private static volatile Set<Block> rocks;
 
     private static boolean rock(BlockState s) {
