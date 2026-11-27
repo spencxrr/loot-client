@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [goto <n>|stop|export|clear], .save. Open the GUI with Right Shift.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())
@@ -79,9 +79,30 @@ public final class CommandManager {
             }
             case "bases" -> {
                 SusChunkFinder bf = LootClient.modules().get(SusChunkFinder.class);
-                if (args.length > 1 && args[1].equalsIgnoreCase("clear")) {
+                String sub = args.length > 1 ? args[1].toLowerCase(java.util.Locale.ROOT) : "list";
+                if (sub.equals("clear")) {
                     bf.clearHits();
+                    bf.clearTarget();
                     ChatUtil.info("Cleared sus chunks.");
+                } else if (sub.equals("goto") || sub.equals("target")) {
+                    int n;
+                    try {
+                        n = args.length > 2 ? Integer.parseInt(args[2]) : 1;
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("usage: .bases goto <number from .bases>");
+                    }
+                    var b = bf.setTarget(n);
+                    if (b == null) ChatUtil.error("No base #" + n + ". Run .bases to see the list.");
+                    else ChatUtil.coords("Heading to base #" + n + " (score " + b.score() + ") at", b.x(), b.minY(), b.z());
+                } else if (sub.equals("stop")) {
+                    bf.clearTarget();
+                    ChatUtil.info("Stopped tracking a base.");
+                } else if (sub.equals("export")) {
+                    try {
+                        ChatUtil.info("Exported " + bf.sortedBases().size() + " bases to " + bf.export().getFileName() + " (plus a -xaero.txt with waypoint lines).");
+                    } catch (java.io.IOException e) {
+                        ChatUtil.error("Export failed: " + e.getMessage());
+                    }
                 } else if (bf.describeHits().isEmpty()) {
                     ChatUtil.info("No sus chunks found yet.");
                 } else {

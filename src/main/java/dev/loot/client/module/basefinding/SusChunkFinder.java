@@ -99,6 +99,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private final BoolSetting beams = add(new BoolSetting("Beams", "Tall beam and label on each base so you can fly to it.", true));
     private final BoolSetting list = add(new BoolSetting("List", "HUD list of the closest bases.", true));
     private final NumberSetting listRows = add(new NumberSetting("ListRows", "Bases shown in the HUD list.", 5, 1, 15, 1));
+    private final ModeSetting sortBy = add(new ModeSetting("SortBy", "Order of the HUD list and .bases: closest first or biggest first.", "Distance", "Distance", "Score"));
+    private final NumberSetting minBaseScore = add(new NumberSetting("MinBaseScore", "Combined score a group of chunks needs to show as a base (0 = any flagged chunk).", 0, 0, 100, 1));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new bases.", true));
     private final BoolSetting alertKnown = add(new BoolSetting("AlertKnown", "Also alert for bases already in the log from earlier sessions.", false));
     private final BoolSetting log = add(new BoolSetting("LogFile", "Append finds to .minecraft/lootclient/bases-<server>.txt.", true));
@@ -221,7 +223,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             case "enchanting table", "crafter", "anvil", "nether portal" -> 3;
             case "hopper", "banner", "skull", "lit furnace", "jukebox", "armor stand", "item frame", "emerald block" -> 2;
             case "sign", "chest", "barrel", "furnace", "bed", "brewing stand", "dispenser", "comparator", "crafting table",
-                 "light", "obsidian", "build blocks" -> 1;
+                 "light", "obsidian", "build blocks", "underground build" -> 1;
             default -> 0;
         };
     }
@@ -230,7 +232,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private static boolean lootish(String kind) {
         return switch (kind) {
             case "chest", "barrel", "dispenser", "bed", "furnace", "brewing stand", "crafting table", "light", "banner",
-                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "stash", "hopper", "hidden light" -> true;
+                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "underground build", "stash", "hopper", "hidden light" -> true;
             default -> false;
         };
     }
@@ -255,6 +257,33 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         return buildBlocks.contains(b);
     }
 
+    private static volatile Set<Block> craftedBlocks;
+
+    /**
+     * Crafted building blocks (bricks, polished stone, planks, stairs, doors...). Common on the
+     * surface (villages) but underground they mean a player, except the ones strongholds,
+     * mineshafts, trial chambers, ancient cities and fortresses are made of, which are left out.
+     */
+    private static boolean craftedBlock(Block b) {
+        if (craftedBlocks == null) {
+            Set<Block> set = new HashSet<>();
+            for (Block block : Registries.BLOCK) {
+                String id = Registries.BLOCK.getId(block).getPath();
+                boolean crafted = id.startsWith("polished_") || id.endsWith("_bricks") || id.endsWith("_tiles") || id.startsWith("smooth_")
+                    || id.startsWith("cut_") || id.endsWith("_planks") || id.startsWith("stripped_") || id.endsWith("_slab")
+                    || id.endsWith("_stairs") || id.endsWith("_door") || id.endsWith("_trapdoor") || id.endsWith("_fence_gate")
+                    || id.equals("chiseled_bookshelf");
+                boolean generated = id.contains("stone_brick") || id.contains("nether_brick") || id.contains("tuff") || id.contains("deepslate")
+                    || id.contains("prismarine") || id.contains("purpur") || id.contains("blackstone") || id.contains("mud_brick")
+                    || id.contains("sandstone") || id.equals("oak_planks") || id.contains("spruce") || id.contains("dark_oak")
+                    || id.contains("oak_door") || id.contains("iron_door") || id.contains("smooth_stone");
+                if (crafted && !generated) set.add(block);
+            }
+            craftedBlocks = set;
+        }
+        return craftedBlocks.contains(b);
+    }
+
     private static boolean isLight(Block b) {
         return b == Blocks.TORCH || b == Blocks.WALL_TORCH || b == Blocks.LANTERN || b == Blocks.SOUL_TORCH
             || b == Blocks.SOUL_WALL_TORCH || b == Blocks.SOUL_LANTERN || b == Blocks.SEA_LANTERN || b == Blocks.REDSTONE_LAMP
@@ -269,6 +298,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         if (b instanceof AnvilBlock) return "anvil";
         if (b == Blocks.NETHER_PORTAL) return "nether portal";
         if (buildBlock(b)) return "build blocks";
+        if ((overworld && y < 40 || !overworld && !end) && craftedBlock(b)) return "underground build";
         // caves have no torches, the nether and end have none at all
         if (isLight(b) && (!overworld || y < 40)) return "light";
         if (overworld && y < 40 && b == Blocks.CRAFTING_TABLE) return "crafting table";
@@ -281,7 +311,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         Block b = s.getBlock();
         return b == Blocks.NETHERITE_BLOCK || b == Blocks.DIAMOND_BLOCK || b == Blocks.EMERALD_BLOCK || b == Blocks.RESPAWN_ANCHOR
             || b instanceof AnvilBlock || b == Blocks.NETHER_PORTAL || b == Blocks.CRAFTING_TABLE || b == Blocks.OBSIDIAN
-            || isLight(b) || buildBlock(b) || b == Blocks.KELP || b == Blocks.SUGAR_CANE || b == Blocks.CACTUS;
+            || isLight(b) || buildBlock(b) || craftedBlock(b) || b == Blocks.KELP || b == Blocks.SUGAR_CANE || b == Blocks.CACTUS;
     }
 
     @Override
@@ -407,8 +437,10 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
                 case "obsidian" -> n = Math.min(n, 4);
                 case "nether portal" -> n = Math.min(2, (n + 5) / 6);
                 case "build blocks" -> n = Math.min(6, n / 12);
+                case "underground build" -> n = Math.min(6, n / 16);
                 case "sign" -> n = Math.min(n, 4);
-                default -> {}
+                // diminishing returns: the 40th chest says less than the 4th
+                default -> n = n <= 6 ? n : 6 + (int) Math.sqrt(n - 6);
             }
             score += w * n;
         }
@@ -527,6 +559,61 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         }
     }
 
+    // ---- waypoint target ----
+
+    /** A chunk inside the base you're heading to; follows the base as it grows or merges. */
+    private long targetKey = Long.MIN_VALUE;
+
+    private Base target() {
+        if (targetKey == Long.MIN_VALUE) return null;
+        for (Base b : bases) if (b.chunks().contains(targetKey)) return b;
+        return null;
+    }
+
+    /** Sorted the way the HUD and .bases show them. */
+    public List<Base> sortedBases() {
+        Vec3d me = mc.player == null ? Vec3d.ZERO : mc.player.getEntityPos();
+        Comparator<Base> order = sortBy.is("Score") ? Comparator.comparingInt(Base::score).reversed()
+            : Comparator.comparingDouble(x -> x.distanceTo(me));
+        return bases.stream().filter(b -> b.score() >= minBaseScore.getInt()).sorted(order).toList();
+    }
+
+    /** Points the HUD at base number {@code index} (1-based, as .bases lists them). */
+    public Base setTarget(int index) {
+        List<Base> list = sortedBases();
+        if (index < 1 || index > list.size()) return null;
+        Base b = list.get(index - 1);
+        targetKey = b.chunks().get(0);
+        return b;
+    }
+
+    public void clearTarget() {
+        targetKey = Long.MIN_VALUE;
+    }
+
+    /** Writes the current bases as CSV plus Xaero's minimap waypoint lines. Returns the CSV path. */
+    public Path export() throws IOException {
+        Path dir = FabricLoader.getInstance().getGameDir().resolve("lootclient");
+        Files.createDirectories(dir);
+        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String dim = mc.world.getRegistryKey().getValue().getPath();
+        StringBuilder csv = new StringBuilder("x,y,z,score,chunks,min_y,max_y,dimension,logged_before,evidence\n");
+        StringBuilder xaero = new StringBuilder("#waypoint:name:initials:x:y:z:color:disabled:type:set:rotate_on_tp:tp_yaw:visibility_type:destination\n");
+        int i = 1;
+        for (Base b : sortedBases()) {
+            csv.append(b.x()).append(',').append(b.minY()).append(',').append(b.z()).append(',').append(b.score()).append(',')
+                .append(b.chunks().size()).append(',').append(b.minY()).append(',').append(b.maxY()).append(',').append(dim).append(',')
+                .append(b.known()).append(",\"").append(b.summary().replace("\"", "'")).append("\"\n");
+            xaero.append("waypoint:Base ").append(i).append(" (").append(b.score()).append("):B:").append(b.x()).append(':').append(b.minY())
+                .append(':').append(b.z()).append(":12:false:0:gui.xaero_default:false:0:0:false\n");
+            i++;
+        }
+        Path file = dir.resolve("bases-" + WorldUtil.serverKey() + "-" + dim + "-" + stamp + ".csv");
+        Files.writeString(file, csv.toString());
+        Files.writeString(dir.resolve("bases-" + WorldUtil.serverKey() + "-" + dim + "-" + stamp + "-xaero.txt"), xaero.toString());
+        return file;
+    }
+
     public List<Base> bases() {
         return bases;
     }
@@ -604,8 +691,10 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         }
         if (beams.get()) {
             int top = mc.world.getBottomY() + mc.world.getHeight();
+            Base t = target();
             for (Base b : bases) {
-                int color = b.known() ? 0xCCFF9A2E : 0xCCFF4D4D;
+                if (b.score() < minBaseScore.getInt()) continue;
+                int color = b == t ? 0xFFFFFFFF : b.known() ? 0xCCFF9A2E : 0xCCFF4D4D;
                 r.line(b.x() + 0.5, b.minY(), b.z() + 0.5, b.x() + 0.5, top, b.z() + 0.5, color);
                 r.line(b.x() + 0.4, b.minY(), b.z() + 0.5, b.x() + 0.4, top, b.z() + 0.5, color);
             }
@@ -630,15 +719,23 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             }
         }
         if (list.get()) {
-            List<Base> near = bases.stream().sorted(Comparator.comparingDouble(x -> x.distanceTo(me))).limit(listRows.getInt()).toList();
-            int w = 150, x = 4, y = 90;
-            UI.roundRect(ctx, x, y, x + w, y + 16 + near.size() * 10, 5, Theme.SURFACE);
+            List<Base> sorted = sortedBases();
+            List<Base> near = sorted.stream().limit(listRows.getInt()).toList();
+            Base t = target();
+            int extra = t != null ? 10 : 0;
+            int w = 160, x = 4, y = 90;
+            UI.roundRect(ctx, x, y, x + w, y + 16 + extra + near.size() * 10, 5, Theme.SURFACE);
             UI.drawBold(ctx, "Bases", x + 6, y + 4, Theme.TEXT);
-            UI.drawTextRight(ctx, String.valueOf(bases.size()), x + w - 6, y + 4, Theme.ACCENT);
+            UI.drawTextRight(ctx, String.valueOf(sorted.size()), x + w - 6, y + 4, Theme.ACCENT);
+            if (t != null) {
+                UI.drawText(ctx, "Going to " + t.x() + ", " + t.z(), x + 6, y + 15, Theme.ACCENT);
+                UI.drawTextRight(ctx, Math.round(t.distanceTo(me)) + "m " + direction(me, t), x + w - 6, y + 15, Theme.ACCENT);
+                y += 10;
+            }
             for (int i = 0; i < near.size(); i++) {
                 Base b = near.get(i);
                 String dir = direction(me, b);
-                String left = b.x() + ", " + b.z();
+                String left = (sorted.indexOf(b) + 1) + ". " + b.x() + ", " + b.z();
                 String right = b.score() + "  " + Math.round(b.distanceTo(me)) + "m " + dir;
                 UI.drawText(ctx, left, x + 6, y + 15 + i * 10, b.known() ? Theme.TEXT_FAINT : Theme.TEXT_MUTED);
                 UI.drawTextRight(ctx, right, x + w - 6, y + 15 + i * 10, Theme.TEXT);
@@ -655,9 +752,10 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     public List<String> describeHits() {
         List<String> out = new ArrayList<>();
         Vec3d me = mc.player == null ? Vec3d.ZERO : mc.player.getEntityPos();
-        for (Base b : bases.stream().sorted(Comparator.comparingDouble(x -> x.distanceTo(me))).toList()) {
-            out.add(b.x() + ", " + b.z() + "  y " + b.minY() + ".." + b.maxY() + "  score " + b.score() + "  " + Math.round(b.distanceTo(me)) + "m"
-                + (b.known() ? "  (logged before)" : "") + "  " + b.summary());
+        int i = 1;
+        for (Base b : sortedBases()) {
+            out.add("#" + i++ + "  " + b.x() + ", " + b.z() + "  y " + b.minY() + ".." + b.maxY() + "  score " + b.score() + "  "
+                + Math.round(b.distanceTo(me)) + "m " + direction(me, b) + (b.known() ? "  (logged before)" : "") + "  " + b.summary());
         }
         return out;
     }
