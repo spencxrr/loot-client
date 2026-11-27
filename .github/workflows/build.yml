@@ -56,8 +56,11 @@ jobs:
           set -o pipefail
           ./gradlew printReleaseLibs --no-daemon -Prelease
           LIBS="$(cat build/release/libs-classpath.txt)"
-          OBF_JAR=build/release/loot-client-obf-dev.jar
-          echo "Obfuscated (pre-remap) jar: $OBF_JAR"
+          # Verify the string-encrypted jar (post-ProGuard + post-StringObf), i.e.
+          # the exact bytecode that goes into remap and ships. remap only renames
+          # Minecraft references, not our classes, so this is what loads in-game.
+          OBF_JAR=build/release/loot-client-strobf-dev.jar
+          echo "Obfuscated + string-encrypted (pre-remap) jar: $OBF_JAR"
           mkdir -p build/verifytool
           javac -d build/verifytool .github/VerifyClasses.java
           java -cp build/verifytool VerifyClasses "$OBF_JAR" "$LIBS"

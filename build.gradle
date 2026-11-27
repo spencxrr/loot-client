@@ -25,7 +25,16 @@ repositories {
     mavenCentral()
 }
 
+// ASM, used only by the `-Prelease` string-encryption pass (stringObfRelease).
+// Kept in its own configuration so it never touches the mod's own classpath.
+configurations {
+    obfTool
+}
+
 dependencies {
+    obfTool 'org.ow2.asm:asm:9.7'
+    obfTool 'org.ow2.asm:asm-tree:9.7'
+
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -106,6 +115,41 @@ tasks.register('proguardRelease', ProGuardTask) {
     printmapping layout.buildDirectory.file('release/mapping.txt')
 }
 
+// Second obfuscation pass: encrypt string literals in our own (already renamed)
+// classes so decompiling the shipped jar no longer exposes module names, setting
+// labels and serialization keys in plaintext. Runs AFTER ProGuard, BEFORE Loom's
+// remapJar. See tools/StringObf.java for why it cannot produce a VerifyError (it
+// only inserts a String->String call where a String was already on the stack, so
+// stack-map frames are unchanged and no Minecraft types need re-resolving). The
+// CI JVM verifier still gates the result.
+def strObfDevJar = layout.buildDirectory.file('release/loot-client-strobf-dev.jar')
+
+tasks.register('stringObfRelease') {
+    group = 'build'
+    description = 'Encrypts string literals in the obfuscated jar (post-ProGuard, pre-remap).'
+    dependsOn tasks.named('proguardRelease')
+
+    inputs.file obfuscatedDevJar
+    inputs.files configurations.obfTool
+    inputs.file file('tools/StringObf.java')
+    outputs.file strObfDevJar
+
+    doLast {
+        def toolCp = configurations.obfTool.asPath
+        def toolOut = layout.buildDirectory.dir('release/strobf-tool').get().asFile
+        toolOut.mkdirs()
+        exec {
+            commandLine 'javac', '-cp', toolCp, '-d', toolOut.absolutePath, file('tools/StringObf.java').absolutePath
+        }
+        exec {
+            commandLine 'java', '-cp', "${toolOut.absolutePath}${File.pathSeparator}${toolCp}",
+                    'StringObf',
+                    obfuscatedDevJar.get().asFile.absolutePath,
+                    strObfDevJar.get().asFile.absolutePath
+        }
+    }
+}
+
 // Writes the named compile/runtime classpath (Minecraft + Fabric + libraries,
 // minus our own output) to a file, so CI can run the JVM bytecode verifier over
 // the pre-remap obfuscated jar against the exact types it was compiled against.
@@ -123,7 +167,7 @@ tasks.register('printReleaseLibs') {
 // just with obfuscated input.
 if (project.hasProperty('release')) {
     tasks.named('remapJar').configure {
-        dependsOn 'proguardRelease'
-        inputFile = obfuscatedDevJar
+        dependsOn 'stringObfRelease'
+        inputFile = strObfDevJar
     }
 }
