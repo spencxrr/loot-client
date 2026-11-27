@@ -79,6 +79,9 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     /** What the worker thread hands back: raw evidence, scored on the main thread. */
     public record Raw(Map<String, Integer> counts, String structure, int minY, int maxY, int minutes) {}
 
+    /** Light evidence handed over by Light Finder (only what this module can't see itself). */
+    public record LightEvidence(int hidden, int litFurnaces, int minY, int maxY) {}
+
     public record Base(List<Long> chunks, int score, int x, int z, int minY, int maxY, String summary, boolean known) {
         double distanceTo(Vec3d p) {
             double dx = x - p.x, dz = z - p.z;
@@ -110,6 +113,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private final Set<Long> known = new HashSet<>();
     private final Set<Long> alerted = new HashSet<>();
     private final Set<Long> alertedStrong = new HashSet<>();
+    private final Map<Long, LightEvidence> lightEvidence = new ConcurrentHashMap<>();
     private List<Base> bases = List.of();
     private boolean basesDirty;
 
@@ -161,6 +165,17 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         bases = List.of();
     }
 
+    /** Light Finder's results for a chunk (null clears them); the chunk gets re-scored. */
+    public void feedLight(long key, LightEvidence ev) {
+        LightEvidence old = ev == null ? lightEvidence.remove(key) : lightEvidence.put(key, ev);
+        if (Objects.equals(old, ev) || !isEnabled() || !inGame()) return;
+        if (mc.world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key)) != null) enqueue(key);
+    }
+
+    public void clearLight() {
+        lightEvidence.clear();
+    }
+
     @Override
     public boolean onPacketSend(Packet<?> packet) {
         if (hideOwn.get() && packet instanceof PlayerInteractBlockC2SPacket p) {
@@ -202,9 +217,9 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             case "stash" -> 8;
             case "shulker" -> 6;
             case "conduit", "netherite block" -> 5;
-            case "ender chest", "respawn anchor", "diamond block" -> 4;
+            case "ender chest", "respawn anchor", "diamond block", "hidden light" -> 4;
             case "enchanting table", "crafter", "anvil", "nether portal" -> 3;
-            case "hopper", "banner", "skull", "jukebox", "armor stand", "item frame", "emerald block" -> 2;
+            case "hopper", "banner", "skull", "lit furnace", "jukebox", "armor stand", "item frame", "emerald block" -> 2;
             case "sign", "chest", "barrel", "furnace", "bed", "brewing stand", "dispenser", "comparator", "crafting table",
                  "light", "obsidian", "build blocks" -> 1;
             default -> 0;
@@ -215,7 +230,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     private static boolean lootish(String kind) {
         return switch (kind) {
             case "chest", "barrel", "dispenser", "bed", "furnace", "brewing stand", "crafting table", "light", "banner",
-                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "stash", "hopper" -> true;
+                 "anvil", "obsidian", "sign", "skull", "item frame", "build blocks", "stash", "hopper", "hidden light" -> true;
             default -> false;
         };
     }
@@ -328,7 +343,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         // ~68s of loaded time per growth tick; kelp at max age needs a few minutes at least
         int minutes = (int) Math.round(growthTicks * 1.14);
         if (grownKelp >= 3) minutes = Math.max(minutes, 16);
-        if (counts.isEmpty() && minutes < 5 && structure == null) return null;
+        if (counts.isEmpty() && minutes < 5 && structure == null && !lightEvidence.containsKey(chunk.getPos().toLong())) return null;
         return new Raw(counts, structure, minY, maxY, minutes);
     }
 
@@ -354,6 +369,16 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             counts.merge(k, 1, Integer::sum);
             minY = Math.min(minY, e.getBlockY());
             maxY = Math.max(maxY, e.getBlockY());
+        }
+
+        LightEvidence light = lightEvidence.get(key);
+        if (light != null) {
+            if (light.hidden() > 0) counts.put("hidden light", Math.min(4, light.hidden()));
+            if (light.litFurnaces() > 0) counts.put("lit furnace", Math.min(4, light.litFurnaces()));
+            if (light.hidden() > 0 || light.litFurnaces() > 0) {
+                minY = Math.min(minY, light.minY());
+                maxY = Math.max(maxY, light.maxY());
+            }
         }
 
         // a structure found here also taints its neighbours; re-check them once
