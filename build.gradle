@@ -1,3 +1,14 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        // Used only by the opt-in `-Prelease` obfuscation pass; has no effect
+        // on a normal debug build.
+        classpath 'com.guardsquare:proguard-gradle:7.6.1'
+    }
+}
+
 plugins {
     id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
@@ -46,5 +57,56 @@ java {
 jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// ============================================================================
+//  Release obfuscation (opt-in)
+//
+//  A normal build is completely untouched:
+//      ./gradlew build                 -> readable debug jar in build/libs
+//
+//  Adding -Prelease inserts a ProGuard pass between `jar` and Loom's
+//  `remapJar`, so the distributable jar has renamed internals and stripped
+//  debug info:
+//      ./gradlew build -Prelease       -> obfuscated jar in build/libs
+//                                         (+ build/release/mapping.txt)
+//
+//  ProGuard runs on the yarn-NAMED jar on purpose: the full Minecraft/Fabric
+//  hierarchy is on the classpath there, so methods that override Minecraft
+//  methods are detected and never renamed. See release.pro and OBFUSCATION.md.
+// ============================================================================
+import proguard.gradle.ProGuardTask
+
+def obfuscatedDevJar = layout.buildDirectory.file('release/loot-client-obf-dev.jar')
+
+tasks.register('proguardRelease', ProGuardTask) {
+    group = 'build'
+    description = 'Renames internals and strips debug info before Loom remaps the jar.'
+    dependsOn tasks.named('jar')
+
+    injars tasks.named('jar').flatMap { it.archiveFile }
+    outjars obfuscatedDevJar
+
+    // Named Minecraft + Fabric + bundled libraries, so overrides resolve.
+    libraryjars sourceSets.main.compileClasspath
+
+    // Java 21 platform modules.
+    def jdkHome = System.getProperty('java.home')
+    ['java.base', 'java.desktop', 'java.management', 'java.net.http', 'jdk.unsupported'].each { mod ->
+        libraryjars "${jdkHome}/jmods/${mod}.jmod(!module-info.class)"
+    }
+
+    configuration file('release.pro')
+    printmapping layout.buildDirectory.file('release/mapping.txt')
+}
+
+// When -Prelease is set, feed ProGuard's output into the existing remap step
+// so the published jar goes through the exact same remap path as a debug jar,
+// just with obfuscated input.
+if (project.hasProperty('release')) {
+    tasks.named('remapJar').configure {
+        dependsOn 'proguardRelease'
+        inputFile = obfuscatedDevJar
     }
 }

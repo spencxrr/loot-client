@@ -15,7 +15,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build
+
+      # --- Normal, readable debug build (unchanged behaviour) ---
+      - name: Build (debug)
         run: |
           chmod +x gradlew
           set -o pipefail
@@ -32,8 +34,55 @@ jobs:
           done
           tail -40 build.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' | sed 's/^/::error title=build tail::/'
           echo
-      - uses: actions/upload-artifact@v4
+
+      # Move the readable jars aside so the release build can reuse build/libs.
+      - name: Stash debug jars
+        run: |
+          mkdir -p debug-dist
+          cp build/libs/*.jar debug-dist/
+          rm -f build/libs/*.jar
+
+      # --- Obfuscated release build ---
+      - name: Build (release, obfuscated)
+        run: |
+          set -o pipefail
+          ./gradlew remapJar --no-daemon -Prelease 2>&1 | tee release.log
+
+      # Isolate ONLY the obfuscated, remapped main jar. Loom's `jar` task
+      # re-creates a readable `-dev.jar` in build/libs; it must never be
+      # shipped, so copy out just the unclassified jar.
+      - name: Collect release jar
+        run: |
+          mkdir -p release-dist
+          for f in build/libs/loot-client-*.jar; do
+            case "$f" in
+              *-dev.jar|*-sources.jar) ;;      # skip readable jars
+              *) cp "$f" release-dist/ ;;
+            esac
+          done
+          cp build/release/mapping.txt release-dist/ 2>/dev/null || true
+          echo "Release dist contents:"; ls -l release-dist/
+
+      - name: Verify obfuscation
+        run: |
+          chmod +x .github/verify-obfuscation.sh
+          RELEASE_JAR=$(ls release-dist/loot-client-*.jar | head -1)
+          echo "Release jar: $RELEASE_JAR"
+          .github/verify-obfuscation.sh "$RELEASE_JAR"
+
+      # --- Artifacts ---
+      - name: Upload debug jar
+        uses: actions/upload-artifact@v4
         with:
-          name: loot-client
-          path: build/libs/*.jar
+          name: loot-client-debug
+          path: debug-dist/loot-client-*.jar
+          if-no-files-found: error
+
+      - name: Upload obfuscated release jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: loot-client-release
+          path: |
+            release-dist/loot-client-*.jar
+            release-dist/mapping.txt
           if-no-files-found: error
