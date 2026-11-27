@@ -4,6 +4,7 @@ import dev.loot.client.gui.ClickGuiScreen;
 import dev.loot.client.gui.Theme;
 import dev.loot.client.module.Category;
 import dev.loot.client.module.Module;
+import dev.loot.client.setting.BoolSetting;
 import dev.loot.client.setting.ModeSetting;
 import dev.loot.client.setting.NumberSetting;
 import org.lwjgl.glfw.GLFW;
@@ -15,6 +16,7 @@ public class ClickGUI extends Module {
     public final ModeSetting font = add(new ModeSetting("Font", "Font used by the menu and HUD.", "Poppins",
         "Poppins", "Outfit", "Manrope", "FiraSans", "Ubuntu", "Minecraft"));
     public final NumberSetting fontSize = add(new NumberSetting("FontSize", "Text size in percent.", 100, 70, 130, 5));
+    public final BoolSetting blur = add(new BoolSetting("Blur", "Blur the world behind the menu. Turn off for more FPS while it's open.", true));
     public final NumberSetting scale = add(new NumberSetting("MenuSize", "Menu size in percent. 100 fits every panel on screen at any resolution.", 100, 60, 150, 5));
 
     public ClickGUI() {
