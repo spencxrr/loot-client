@@ -1,3 +1,14 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        // Used only by the opt-in `-Prelease` obfuscation pass; has no effect
+        // on a normal debug build.
+        classpath 'com.guardsquare:proguard-gradle:7.6.1'
+    }
+}
+
 plugins {
     id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
@@ -14,7 +25,16 @@ repositories {
     mavenCentral()
 }
 
+// ASM, used only by the `-Prelease` string-encryption pass (stringObfRelease).
+// Kept in its own configuration so it never touches the mod's own classpath.
+configurations {
+    obfTool
+}
+
 dependencies {
+    obfTool 'org.ow2.asm:asm:9.7'
+    obfTool 'org.ow2.asm:asm-tree:9.7'
+
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -46,5 +66,110 @@ java {
 jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// ============================================================================
+//  Release obfuscation (opt-in)
+//
+//  A normal build is completely untouched:
+//      ./gradlew build                 -> readable debug jar in build/libs
+//
+//  Adding -Prelease inserts a ProGuard pass between `jar` and Loom's
+//  `remapJar`, so the distributable jar has renamed internals and stripped
+//  debug info:
+//      ./gradlew build -Prelease       -> obfuscated jar in build/libs
+//                                         (+ build/release/mapping.txt)
+//
+//  ProGuard runs on the yarn-NAMED jar on purpose: the full Minecraft/Fabric
+//  hierarchy is on the classpath there, so methods that override Minecraft
+//  methods are detected and never renamed. See release.pro and OBFUSCATION.md.
+// ============================================================================
+import proguard.gradle.ProGuardTask
+
+def obfuscatedDevJar = layout.buildDirectory.file('release/loot-client-obf-dev.jar')
+
+tasks.register('proguardRelease', ProGuardTask) {
+    group = 'build'
+    description = 'Renames internals and strips debug info before Loom remaps the jar.'
+    dependsOn tasks.named('jar')
+
+    injars tasks.named('jar').flatMap { it.archiveFile }
+    outjars obfuscatedDevJar
+
+    // FULL runtime classpath (Minecraft + Fabric + every transitive library),
+    // minus our own compiled output. ProGuard recomputes stack-map frames for
+    // every method it writes; if a referenced type can't be resolved it falls
+    // back to java/lang/Object at control-flow joins and emits bytecode that
+    // fails JVM verification (VerifyError). compileClasspath missed some of
+    // Minecraft's runtime-only transitive deps, so use runtimeClasspath.
+    libraryjars sourceSets.main.runtimeClasspath.minus(sourceSets.main.output)
+
+    // Java 21 platform modules.
+    def jdkHome = System.getProperty('java.home')
+    ['java.base', 'java.desktop', 'java.management', 'java.net.http', 'jdk.unsupported'].each { mod ->
+        libraryjars "${jdkHome}/jmods/${mod}.jmod(!module-info.class)"
+    }
+
+    configuration file('release.pro')
+    printmapping layout.buildDirectory.file('release/mapping.txt')
+}
+
+// Second obfuscation pass: encrypt string literals in our own (already renamed)
+// classes so decompiling the shipped jar no longer exposes module names, setting
+// labels and serialization keys in plaintext. Runs AFTER ProGuard, BEFORE Loom's
+// remapJar. See tools/StringObf.java for why it cannot produce a VerifyError (it
+// only inserts a String->String call where a String was already on the stack, so
+// stack-map frames are unchanged and no Minecraft types need re-resolving). The
+// CI JVM verifier still gates the result.
+def strObfDevJar = layout.buildDirectory.file('release/loot-client-strobf-dev.jar')
+def strObfToolDir = layout.buildDirectory.dir('release/strobf-tool')
+
+// Compile the tiny ASM tool. Kept as a JavaCompile/JavaExec pair rather than
+// ad-hoc exec {} because Project.exec() is not available inside a task action
+// on modern Gradle.
+tasks.register('compileStringObfTool', JavaCompile) {
+    source = files('tools/StringObf.java')
+    classpath = configurations.obfTool
+    destinationDirectory.set(strObfToolDir)
+    options.release = 21
+}
+
+tasks.register('stringObfRelease', JavaExec) {
+    group = 'build'
+    description = 'Encrypts string literals in the obfuscated jar (post-ProGuard, pre-remap).'
+    dependsOn tasks.named('proguardRelease'), tasks.named('compileStringObfTool')
+
+    inputs.file obfuscatedDevJar
+    inputs.files configurations.obfTool
+    outputs.file strObfDevJar
+
+    classpath = files(strObfToolDir) + configurations.obfTool
+    mainClass = 'StringObf'
+    args = [
+            obfuscatedDevJar.get().asFile.absolutePath,
+            strObfDevJar.get().asFile.absolutePath
+    ]
+}
+
+// Writes the named compile/runtime classpath (Minecraft + Fabric + libraries,
+// minus our own output) to a file, so CI can run the JVM bytecode verifier over
+// the pre-remap obfuscated jar against the exact types it was compiled against.
+tasks.register('printReleaseLibs') {
+    def out = layout.buildDirectory.file('release/libs-classpath.txt')
+    def libs = sourceSets.main.runtimeClasspath.minus(sourceSets.main.output)
+    outputs.file(out)
+    doLast {
+        out.get().asFile.text = libs.asPath
+    }
+}
+
+// When -Prelease is set, feed ProGuard's output into the existing remap step
+// so the published jar goes through the exact same remap path as a debug jar,
+// just with obfuscated input.
+if (project.hasProperty('release')) {
+    tasks.named('remapJar').configure {
+        dependsOn 'stringObfRelease'
+        inputFile = strObfDevJar
     }
 }

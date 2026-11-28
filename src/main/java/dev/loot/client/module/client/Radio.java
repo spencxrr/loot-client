@@ -105,9 +105,21 @@ public class Radio extends Module {
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(15000);
             int metaInt = conn.getHeaderFieldInt("icy-metaint", 0);
-            InputStream in = new BufferedInputStream(conn.getInputStream(), 64 * 1024);
-            if (metaInt > 0) in = new IcyStream(in, metaInt, title -> MusicHud.external = name + ": " + title);
-            current = in;
+            // Assign `current` in each branch instead of reusing one local, so the
+            // bytecode never merges two sibling InputStream subtypes (BufferedInputStream
+            // vs IcyStream) into one slot. That merge forces the obfuscation/remap
+            // toolchain to compute their common supertype; when it can't resolve
+            // IcyStream in that pass it falls back to java/lang/Object, which makes the
+            // following putfield(current:InputStream) fail JVM verification (VerifyError
+            // "Object not assignable to InputStream") at mod load. Reading `in` back from
+            // the field keeps it typed as InputStream with no merge.
+            BufferedInputStream raw = new BufferedInputStream(conn.getInputStream(), 64 * 1024);
+            if (metaInt > 0) {
+                current = new IcyStream(raw, metaInt, title -> MusicHud.external = name + ": " + title);
+            } else {
+                current = raw;
+            }
+            InputStream in = current;
             MusicHud.external = name;
 
             Bitstream bits = new Bitstream(in);
