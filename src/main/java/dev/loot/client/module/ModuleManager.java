@@ -61,6 +61,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.misc.KeyPearl());
         register(new dev.loot.client.module.misc.KeyWindCharge());
         register(new dev.loot.client.module.misc.NameProtect());
+        register(new dev.loot.client.module.misc.FakeStats());
         register(new dev.loot.client.module.misc.NoFall());
         register(new dev.loot.client.module.misc.SkinProtect());
         register(new dev.loot.client.module.misc.Sprint());

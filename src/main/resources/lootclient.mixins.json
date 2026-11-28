@@ -9,6 +9,7 @@
     "ClientPlayNetworkHandlerMixin",
     "ClientPlayerInteractionManagerMixin",
     "ConnectScreenMixin",
+    "DrawContextMixin",
     "EntityMixin",
     "EntityRendererMixin",
     "FogRendererMixin",
@@ -21,6 +22,7 @@
     "MinecraftClientAccessor",
     "ParticleManagerMixin",
     "PlayerListEntryMixin",
+    "TextRendererMixin",
     "TextVisitFactoryMixin",
     "WorldMixin"
   ],
