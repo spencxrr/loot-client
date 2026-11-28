@@ -93,10 +93,30 @@ public class LootClient implements ClientModInitializer {
                     LOGGER.error("{} hud failed", m.getName(), e);
                 }
             }
+            drawMenuHoldBar(ctx);
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> Config.save());
 
         LOGGER.info("Loot Client {} loaded with {} modules", VERSION, modules.getModules().size());
+    }
+
+    /**
+     * Thin bar under the crosshair while the Click GUI key is being held, so the 2s hold doesn't feel
+     * like nothing is happening. Hidden for the first 200ms so quick taps never flash it.
+     */
+    private static void drawMenuHoldBar(net.minecraft.client.gui.DrawContext ctx) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.currentScreen != null || mc.options.hudHidden) return;
+        Module gui = modules.get(dev.loot.client.module.client.ClickGUI.class);
+        float p = modules.holdProgress(gui);
+        long hold = gui.holdToToggleMs();
+        if (p <= 0 || p * hold < 200) return;
+        int w = 44, h = 3;
+        int x = (ctx.getScaledWindowWidth() - w) / 2;
+        int y = ctx.getScaledWindowHeight() / 2 + 12;
+        dev.loot.client.gui.UI.roundRect(ctx, x, y, x + w, y + h, 1.5f, 0x90101018);
+        int fill = Math.max(1, Math.round(w * p));
+        dev.loot.client.gui.UI.roundRect(ctx, x, y, x + fill, y + h, 1.5f, dev.loot.client.gui.Theme.ACCENT);
     }
 }
