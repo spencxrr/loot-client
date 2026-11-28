@@ -41,6 +41,14 @@ public abstract class Module {
         setEnabled(!enabled);
     }
 
+    /**
+     * How long the keybind has to be held before it toggles, in ms. 0 means a plain tap toggles.
+     * Used by the Click GUI so a quick Shift press meant for something else doesn't open it.
+     */
+    public long holdToToggleMs() {
+        return 0;
+    }
+
     public void setEnabled(boolean enabled) {
         if (this.enabled == enabled) return;
         this.enabled = enabled;

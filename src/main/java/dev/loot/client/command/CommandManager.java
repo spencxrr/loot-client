@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [clear], .save. Open the GUI by holding Right Ctrl for 2s.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())

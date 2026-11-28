@@ -2,17 +2,23 @@ package dev.loot.client.module;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.Util;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ModuleManager {
     private final List<Module> modules = new ArrayList<>();
     private final Map<Class<? extends Module>, Module> byClass = new HashMap<>();
     private final Map<Integer, Boolean> keyStates = new HashMap<>();
+    /** Hold-to-toggle binds: when the current hold started, and binds that already fired this hold. */
+    private final Map<Module, Long> holdStart = new HashMap<>();
+    private final Set<Module> holdFired = new HashSet<>();
 
     public ModuleManager() {
         // combat
@@ -202,6 +208,11 @@ public class ModuleManager {
             int key = m.getKey();
             if (key == GLFW.GLFW_KEY_UNKNOWN) continue;
             boolean down = InputUtil.isKeyPressed(window, key);
+            long hold = m.holdToToggleMs();
+            if (hold > 0) {
+                pollHold(m, down, canToggle, hold);
+                continue;
+            }
             boolean wasDown = keyStates.getOrDefault(key, false);
             if (down && !wasDown && canToggle) m.toggle();
         }
@@ -210,5 +221,37 @@ public class ModuleManager {
             int key = m.getKey();
             if (key != GLFW.GLFW_KEY_UNKNOWN) keyStates.put(key, InputUtil.isKeyPressed(window, key));
         }
+    }
+
+    /**
+     * Toggles once the key has been held for the full time. Releasing early resets the timer, the
+     * timer only runs while no screen is open, and it fires once per press so holding the key after
+     * the menu closes doesn't reopen it. The key isn't consumed, so sneak and other binds still work.
+     */
+    private void pollHold(Module m, boolean down, boolean canToggle, long hold) {
+        if (!down) {
+            holdStart.remove(m);
+            holdFired.remove(m);
+            return;
+        }
+        if (!canToggle || holdFired.contains(m)) {
+            holdStart.remove(m);
+            return;
+        }
+        long now = Util.getMeasuringTimeMs();
+        long start = holdStart.computeIfAbsent(m, k -> now);
+        if (now - start >= hold) {
+            holdStart.remove(m);
+            holdFired.add(m);
+            m.toggle();
+        }
+    }
+
+    /** 0..1 progress of a hold-to-toggle bind that is being held right now, or 0 when it isn't. */
+    public float holdProgress(Module m) {
+        Long start = holdStart.get(m);
+        long hold = m.holdToToggleMs();
+        if (start == null || hold <= 0) return 0;
+        return Math.min(1f, (Util.getMeasuringTimeMs() - start) / (float) hold);
     }
 }

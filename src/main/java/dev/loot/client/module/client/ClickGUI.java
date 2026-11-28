@@ -15,16 +15,24 @@ public class ClickGUI extends Module {
     public final ModeSetting font = add(new ModeSetting("Font", "Font used by the menu and HUD.", "Poppins",
         "Poppins", "Outfit", "Manrope", "FiraSans", "Ubuntu", "Minecraft"));
     public final NumberSetting fontSize = add(new NumberSetting("FontSize", "Text size in percent.", 100, 70, 130, 5));
+    public final NumberSetting holdTime = add(new NumberSetting("HoldTime",
+        "Seconds the keybind has to be held before the menu opens, so a quick tap meant for another client or launcher does nothing. 0 opens on tap.",
+        2, 0, 5, 0.25));
     public final NumberSetting scale = add(new NumberSetting("MenuSize", "Menu size in percent. 100 fits every panel on screen at any resolution.", 100, 60, 150, 5));
 
     public ClickGUI() {
         super("Click GUI", "Opens the module menu. Right click it for theme, font and size.", Category.CLIENT);
-        setKey(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        setKey(GLFW.GLFW_KEY_RIGHT_CONTROL);
         applyTheme();
     }
 
     private void applyTheme() {
         Theme.apply(theme.get(), surface.get());
+    }
+
+    @Override
+    public long holdToToggleMs() {
+        return Math.round(holdTime.get() * 1000);
     }
 
     @Override
