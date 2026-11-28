@@ -55,15 +55,34 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew printReleaseLibs --no-daemon -Prelease
-          LIBS="$(cat build/release/libs-classpath.txt)"
-          # Verify the string-encrypted jar (post-ProGuard + post-StringObf), i.e.
-          # the exact bytecode that goes into remap and ships. remap only renames
-          # Minecraft references, not our classes, so this is what loads in-game.
-          OBF_JAR=build/release/loot-client-strobf-dev.jar
-          echo "Obfuscated + string-encrypted (pre-remap) jar: $OBF_JAR"
+          NAMED_LIBS="$(cat build/release/libs-classpath.txt)"
+
+          # IMPORTANT: verify the FINAL remapped jar that actually ships - not the
+          # pre-remap jar. The remap step recomputes stack-map frames, so a jar can
+          # pass verification before remap and still fail at load after it (that is
+          # exactly the bug that shipped twice). The shipped classes reference
+          # Minecraft by intermediary name (net.minecraft.class_*), so we must put
+          # the intermediary Minecraft jar on the classpath or the classes won't even
+          # link here - and VerifyClasses now fails if any class cannot link, so a
+          # missing classpath can't produce a false "OK".
+          SHIPPED=""
+          for f in build/libs/loot-client-*.jar; do
+            case "$f" in
+              *-dev.jar|*-sources.jar) ;;
+              *) SHIPPED="$f" ;;
+            esac
+          done
+          echo "Shipped (remapped) jar: $SHIPPED"
+
+          echo "== candidate Minecraft jars in the Loom cache =="
+          find "$HOME/.gradle/caches/fabric-loom" -iname '*minecraft*.jar' 2>/dev/null | sort || true
+          INT_MC="$(find "$HOME/.gradle/caches/fabric-loom" -iname '*intermediary*.jar' 2>/dev/null | tr '\n' ':')"
+          echo "Intermediary Minecraft jar(s): $INT_MC"
+
+          CP="${SHIPPED}:${INT_MC}${NAMED_LIBS}"
           mkdir -p build/verifytool
           javac -d build/verifytool .github/VerifyClasses.java
-          java -cp build/verifytool VerifyClasses "$OBF_JAR" "$LIBS"
+          java -cp build/verifytool VerifyClasses "$SHIPPED" "$CP"
 
       # Isolate ONLY the obfuscated, remapped main jar. Loom's `jar` task
       # re-creates a readable `-dev.jar` in build/libs; it must never be

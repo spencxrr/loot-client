@@ -93,14 +93,25 @@ public final class VerifyClasses {
         if (!otherFailures.isEmpty()) {
             System.out.println("\n  -- other (non-fatal) --");
             int shown = 0;
-            for (String f : otherFailures) { System.out.println("    " + f); if (++shown >= 25) { System.out.println("    ... (" + (otherFailures.size() - shown) + " more)"); break; } }
+            for (String f : otherFailures) { System.out.println("    " + f); if (++shown >= 200) { System.out.println("    ... (" + (otherFailures.size() - shown) + " more)"); break; } }
         }
         System.out.println("==============================================================");
         if (verifyErrors > 0) {
             System.out.println(" RESULT: FAILED - obfuscated jar would throw VerifyError at load");
             System.exit(1);
         }
-        System.out.println(" RESULT: OK - every client class passes JVM bytecode verification");
+        // A class that cannot even be loaded+linked here means this check is NOT
+        // mirroring the real load (usually a classpath gap: e.g. intermediary
+        // Minecraft missing when verifying the remapped jar). Treat that as a
+        // failure too, so a non-faithful run can never report a false "OK" - the
+        // whole point is that green == the mod actually links at load time.
+        if (other > 0) {
+            System.out.println(" RESULT: FAILED - " + other + " class(es) could not be loaded/linked.");
+            System.out.println(" This check is not faithful unless every client class links against the");
+            System.out.println(" same classpath the game uses (intermediary Minecraft + Fabric + libs).");
+            System.exit(1);
+        }
+        System.out.println(" RESULT: OK - every client class loads, links and passes JVM bytecode verification");
     }
 
     static String firstLine(Throwable t) {
