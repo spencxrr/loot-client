@@ -20,6 +20,7 @@ import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -171,33 +172,12 @@ public class NewChunks extends ChunkScanModule<Integer> {
      * already-visited terrain through fresh world. Long connected strips are someone's route.
      */
     private void findTrails() {
-        Set<Long> found = new java.util.HashSet<>();
-        for (long k : results.keySet()) {
-            if (!isOld(k)) continue;
-            int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k), news = 0;
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dz = -1; dz <= 1; dz++)
-                    if ((dx != 0 || dz != 0) && isNew(ChunkPos.toLong(cx + dx, cz + dz))) news++;
-            if (news >= 3) found.add(k);
-        }
+        List<Long> old = new java.util.ArrayList<>();
+        results.forEach((k, t) -> old.add(k));
+        Set<Long> found = Clusters.trail(old, this::isNew, 3);
         trail = found;
         if (!trailAlert.get()) return;
-        Set<Long> seen = new java.util.HashSet<>();
-        for (long start : found) {
-            if (!seen.add(start)) continue;
-            java.util.List<Long> group = new java.util.ArrayList<>();
-            java.util.ArrayDeque<Long> stack = new java.util.ArrayDeque<>();
-            stack.push(start);
-            while (!stack.isEmpty()) {
-                long k = stack.pop();
-                group.add(k);
-                int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k);
-                for (int dx = -1; dx <= 1; dx++)
-                    for (int dz = -1; dz <= 1; dz++) {
-                        long n = ChunkPos.toLong(cx + dx, cz + dz);
-                        if (found.contains(n) && seen.add(n)) stack.push(n);
-                    }
-            }
+        for (List<Long> group : Clusters.group(found, 1)) {
             if (group.size() < trailLength.getInt() || group.stream().anyMatch(trailAlerted::contains)) continue;
             trailAlerted.addAll(group);
             int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
@@ -207,7 +187,7 @@ public class NewChunks extends ChunkScanModule<Integer> {
                 minZ = Math.min(minZ, ChunkPos.getPackedZ(k));
                 maxZ = Math.max(maxZ, ChunkPos.getPackedZ(k));
             }
-            String axis = maxX - minX >= maxZ - minZ ? "east-west" : "north-south";
+            String axis = Clusters.axis(group);
             dev.loot.client.util.ChatUtil.coords("Trail of " + group.size() + " old chunks (" + axis + ") at",
                 ((minX + maxX) / 2 << 4) + 8, 64, ((minZ + maxZ) / 2 << 4) + 8);
             dev.loot.client.util.ChatUtil.ping();

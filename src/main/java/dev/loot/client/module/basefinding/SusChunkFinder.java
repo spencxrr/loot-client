@@ -237,13 +237,25 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
 
     @Override
     public boolean onPacketSend(Packet<?> packet) {
-        if (hideOwn.get() && packet instanceof PlayerInteractBlockC2SPacket p) {
+        if (hideOwn.get() && packet instanceof PlayerInteractBlockC2SPacket p && placesBlock(p)) {
             BlockPos pos = p.getBlockHitResult().getBlockPos();
             ownChunks.add(ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4));
             BlockPos placed = pos.offset(p.getBlockHitResult().getSide());
             ownChunks.add(ChunkPos.toLong(placed.getX() >> 4, placed.getZ() >> 4));
         }
         return false;
+    }
+
+    /**
+     * Only placing a block makes a chunk "yours". Opening a chest or pressing a button at a base you
+     * just found used to count too, which hid the base the moment you looked inside it.
+     */
+    private boolean placesBlock(PlayerInteractBlockC2SPacket p) {
+        if (mc.player == null || mc.world == null) return false;
+        if (!(mc.player.getStackInHand(p.getHand()).getItem() instanceof net.minecraft.item.BlockItem)) return false;
+        // right-clicking a container or other usable block opens it instead of placing, unless sneaking
+        BlockState target = mc.world.getBlockState(p.getBlockHitResult().getBlockPos());
+        return mc.player.isSneaking() || !(target.getBlock() instanceof net.minecraft.block.BlockWithEntity);
     }
 
     // ---- evidence ----
@@ -553,24 +565,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
     // ---- bases (clusters of hits) ----
 
     private void rebuildBases() {
-        List<Long> keys = new ArrayList<>(results.keySet());
-        Set<Long> seen = new HashSet<>();
         List<Base> out = new ArrayList<>();
-        for (long start : keys) {
-            if (!seen.add(start)) continue;
-            List<Long> group = new ArrayList<>();
-            Deque<Long> stack = new ArrayDeque<>();
-            stack.push(start);
-            while (!stack.isEmpty()) {
-                long k = stack.pop();
-                group.add(k);
-                int cx = ChunkPos.getPackedX(k), cz = ChunkPos.getPackedZ(k);
-                for (int dx = -2; dx <= 2; dx++)
-                    for (int dz = -2; dz <= 2; dz++) {
-                        long n = ChunkPos.toLong(cx + dx, cz + dz);
-                        if (results.containsKey(n) && seen.add(n)) stack.push(n);
-                    }
-            }
+        for (List<Long> group : Clusters.group(results.keySet(), 2)) {
             int score = 0, minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
             double wx = 0, wz = 0;
             boolean isKnown = true;
@@ -608,8 +604,10 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
                 alerted.addAll(b.chunks());
                 if (fresh && log.get()) writeLog(b);
                 if (alert.get() && (fresh || alertKnown.get())) {
-                    ChatUtil.coords((fresh ? "Possible base" : "Known base") + " (score " + b.score() + ", y " + b.minY() + " to " + b.maxY() + ") at",
-                        b.x(), b.minY(), b.z());
+                    Vec3d me = mc.player.getEntityPos();
+                    ChatUtil.coords((fresh ? "Possible base" : "Known base") + ": score " + b.score() + ", " + b.chunks().size()
+                        + (b.chunks().size() == 1 ? " chunk" : " chunks") + ", y " + b.minY() + " to " + b.maxY() + ", "
+                        + Math.round(b.distanceTo(me)) + "m " + direction(me, b) + " at", b.x(), b.minY(), b.z());
                     ChatUtil.info(b.summary());
                     ChatUtil.ping();
                 }
@@ -731,9 +729,14 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
 
     // ---- rendering ----
 
+    /** Height the squares are drawn at this frame (Light Finder draws at the same one). */
+    public double drawY(float tickDelta) {
+        return height.is("Fixed") ? fixedY.get() : Math.floor(mc.player.getLerpedPos(tickDelta).y) - 12;
+    }
+
     @Override
     public void onRender3D(Render3D r, float tickDelta) {
-        double y = height.is("Fixed") ? fixedY.get() : Math.floor(mc.player.getLerpedPos(tickDelta).y) - 12;
+        double y = drawY(tickDelta);
         int strong = threshold() * 3;
         for (var e : results.entrySet()) {
             ChunkPos c = new ChunkPos(e.getKey());
