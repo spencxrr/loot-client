@@ -22,7 +22,7 @@ public class ClickGUI extends Module {
 
     public ClickGUI() {
         super("Click GUI", "Opens the module menu. Right click it for theme, font and size.", Category.CLIENT);
-        setKey(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        setKey(GLFW.GLFW_KEY_RIGHT_CONTROL);
         applyTheme();
     }
 

@@ -11,7 +11,7 @@ Don't use it on servers with rules against it; it has no anticheat bypasses and 
 
 ## Controls
 
-- **Right Shift** opens the click GUI. Left click toggles, right click shows settings, middle click binds a key (Esc/Backspace clears).
+- Hold **Right Ctrl** for 2 seconds to open the click GUI (hold time is the Click GUI HoldTime setting, 0 = tap). Left click toggles, right click shows settings, middle click binds a key (Esc/Backspace clears).
 - Chat commands (never sent to the server): `.help`, `.modules`, `.t <module>`, `.bind <module> <key|none>`,
   `.settings <module>`, `.set <module> <setting> <value>`, `.bases [clear]`, `.save`.
 - Config lives in `.minecraft/config/lootclient.json`.
