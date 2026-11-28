@@ -15,6 +15,6 @@ public class AutoMine extends Module {
 
     @Override
     public void onDisable() {
-        mc.options.attackKey.setPressed(false);
+        dev.loot.client.util.KeyUtil.release(mc.options.attackKey);
     }
 }

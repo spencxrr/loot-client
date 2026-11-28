@@ -1,47 +1,38 @@
 package dev.loot.client.module.render;
 
 import dev.loot.client.module.Category;
-import dev.loot.client.module.Module;
+import dev.loot.client.module.basefinding.ChunkScanModule;
 import dev.loot.client.render.Render3D;
 import dev.loot.client.setting.BlockListSetting;
 import dev.loot.client.setting.BoolSetting;
 import dev.loot.client.setting.NumberSetting;
-import dev.loot.client.util.WorldUtil;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
-import net.minecraft.client.world.ClientWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Finds configured blocks in loaded chunks. Chunks are scanned on the main thread with a
- * per-tick time budget, and whole 16x16x16 sections are skipped via the palette when they
- * can't contain a target block, so even big block lists stay cheap.
+ * Finds configured blocks in loaded chunks. Uses the shared background chunk scanner, skips
+ * whole 16x16x16 sections via the palette when they can't contain a target block, and re-scans
+ * a chunk as soon as the server says a block in it changed, so mined ores vanish right away.
  */
-public class BlockESP extends Module {
+public class BlockESP extends ChunkScanModule<List<BlockESP.Found>> {
+    public record Found(BlockPos pos, int color) {}
+
     private final BlockListSetting blocks = add(new BlockListSetting("Blocks", "Blocks to highlight. Edit with .set BlockESP Blocks add <id>.",
         Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE, Blocks.ANCIENT_DEBRIS, Blocks.SPAWNER).onChange(this::rescanAll));
     private final NumberSetting range = add(new NumberSetting("Range", "Max render distance in blocks.", 256, 16, 1024, 16));
-    private final NumberSetting limit = add(new NumberSetting("Limit", "Max boxes drawn per frame.", 2000, 100, 20000, 100));
+    private final NumberSetting limit = add(new NumberSetting("Limit", "Max boxes drawn per frame (closest first).", 2000, 100, 20000, 100));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 60, 0, 255, 5));
     private final BoolSetting tracers = add(new BoolSetting("Tracers", "Draw lines to found blocks.", false));
 
-    private final Map<Long, List<BlockPos>> found = new HashMap<>();
-    private final Deque<Long> queue = new ArrayDeque<>();
-    private final Set<Long> queued = new HashSet<>();
-    private int refreshTimer;
     private int total;
 
     public BlockESP() {
@@ -49,71 +40,10 @@ public class BlockESP extends Module {
     }
 
     @Override
-    public void onEnable() {
-        rescanAll();
-    }
-
-    @Override
-    public void onDisable() {
-        found.clear();
-        queue.clear();
-        queued.clear();
-        total = 0;
-    }
-
-    private void rescanAll() {
-        found.clear();
-        queue.clear();
-        queued.clear();
-        if (!isEnabled() || !inGame()) return;
-        for (WorldChunk chunk : WorldUtil.loadedChunks()) enqueue(chunk.getPos());
-    }
-
-    private void enqueue(ChunkPos pos) {
-        long key = pos.toLong();
-        if (queued.add(key)) queue.add(key);
-    }
-
-    @Override
-    public void onChunkLoad(WorldChunk chunk) {
-        if (isEnabled()) enqueue(chunk.getPos());
-    }
-
-    @Override
-    public void onChunkUnload(WorldChunk chunk) {
-        found.remove(chunk.getPos().toLong());
-    }
-
-    @Override
-    public void onTick() {
-        // Re-check nearby chunks every couple of seconds to pick up placed/broken blocks.
-        if (refreshTimer-- <= 0) {
-            refreshTimer = 40;
-            ChunkPos center = mc.player.getChunkPos();
-            for (int x = -2; x <= 2; x++)
-                for (int z = -2; z <= 2; z++)
-                    enqueue(new ChunkPos(center.x + x, center.z + z));
-        }
-
-        long deadline = System.nanoTime() + 2_000_000L; // 2ms per tick
-        while (!queue.isEmpty() && System.nanoTime() < deadline) {
-            long key = queue.poll();
-            queued.remove(key);
-            WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key));
-            if (chunk == null) {
-                found.remove(key);
-                continue;
-            }
-            List<BlockPos> hits = scan(mc.world, chunk, blocks.get());
-            if (hits.isEmpty()) found.remove(key);
-            else found.put(key, hits);
-        }
-        total = found.values().stream().mapToInt(List::size).sum();
-    }
-
-    static List<BlockPos> scan(ClientWorld world, WorldChunk chunk, Set<Block> targets) {
-        List<BlockPos> hits = new ArrayList<>();
-        if (targets.isEmpty()) return hits;
+    protected List<Found> scan(WorldChunk chunk) {
+        Set<Block> targets = Set.copyOf(blocks.get());
+        if (targets.isEmpty()) return null;
+        List<Found> hits = new ArrayList<>();
         ChunkSection[] sections = chunk.getSectionArray();
         int baseX = chunk.getPos().getStartX();
         int baseZ = chunk.getPos().getStartZ();
@@ -124,29 +54,39 @@ public class BlockESP extends Module {
             int baseY = chunk.sectionIndexToCoord(i) << 4;
             for (int y = 0; y < 16; y++)
                 for (int z = 0; z < 16; z++)
-                    for (int x = 0; x < 16; x++)
-                        if (targets.contains(section.getBlockState(x, y, z).getBlock()))
-                            hits.add(new BlockPos(baseX + x, baseY + y, baseZ + z));
+                    for (int x = 0; x < 16; x++) {
+                        Block b = section.getBlockState(x, y, z).getBlock();
+                        if (targets.contains(b)) hits.add(new Found(new BlockPos(baseX + x, baseY + y, baseZ + z), colorFor(b)));
+                    }
         }
-        return hits;
+        return hits.isEmpty() ? null : hits;
+    }
+
+    @Override
+    public void onTick() {
+        super.onTick();
+        int n = 0;
+        for (List<Found> list : results.values()) n += list.size();
+        total = n;
     }
 
     @Override
     public void onRender3D(Render3D r, float tickDelta) {
         double maxSq = range.get() * range.get();
         int max = limit.getInt();
-        int drawn = 0;
         BlockPos player = mc.player.getBlockPos();
-        outer:
-        for (List<BlockPos> list : found.values()) {
-            for (BlockPos pos : list) {
-                if (pos.getSquaredDistance(player) > maxSq) continue;
-                int color = colorFor(mc.world.getBlockState(pos).getBlock());
-                Box box = new Box(pos);
-                r.box(box, color, fill.getInt());
-                if (tracers.get()) r.line(r.crosshair(), box.getCenter(), color);
-                if (++drawn >= max) break outer;
-            }
+        List<Found> visible = new ArrayList<>();
+        for (List<Found> list : results.values())
+            for (Found f : list)
+                if (f.pos().getSquaredDistance(player) <= maxSq) visible.add(f);
+        if (visible.size() > max) {
+            visible.sort((a, b) -> Double.compare(a.pos().getSquaredDistance(player), b.pos().getSquaredDistance(player)));
+            visible = visible.subList(0, max);
+        }
+        for (Found f : visible) {
+            Box box = new Box(f.pos());
+            r.box(box, f.color(), fill.getInt());
+            if (tracers.get()) r.line(r.crosshair(), box.getCenter(), f.color());
         }
     }
 

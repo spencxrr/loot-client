@@ -61,6 +61,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.misc.KeyPearl());
         register(new dev.loot.client.module.misc.KeyWindCharge());
         register(new dev.loot.client.module.misc.NameProtect());
+        register(new dev.loot.client.module.misc.FakeStats());
         register(new dev.loot.client.module.misc.NoFall());
         register(new dev.loot.client.module.misc.SkinProtect());
         register(new dev.loot.client.module.misc.Sprint());
@@ -70,6 +71,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.basefinding.BlockEntityDebug());
         register(new dev.loot.client.module.basefinding.HoleESP());
         register(new dev.loot.client.module.basefinding.LightFinder());
+        register(new dev.loot.client.module.basefinding.NewChunks());
         register(new dev.loot.client.module.basefinding.SusChunkFinder());
         register(new dev.loot.client.module.basefinding.SuspiciousESP());
         register(new dev.loot.client.module.basefinding.TunnelBaseFinder());
@@ -84,6 +86,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.render.Freecam());
         register(new dev.loot.client.module.render.Fullbright());
         register(new dev.loot.client.module.render.Hud());
+        register(new dev.loot.client.module.render.Notifications());
         register(new dev.loot.client.module.render.InventoryHud());
         register(new dev.loot.client.module.render.JumpCircles());
         register(new dev.loot.client.module.render.MobESP());

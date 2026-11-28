@@ -25,12 +25,18 @@ public class SuspiciousESP extends ChunkScanModule<List<SuspiciousESP.Find>> {
 
     private final NumberSetting undergroundY = add(new NumberSetting("UndergroundY", "Beds, tables and furnaces only count below this.", 40, -64, 320, 1));
     private final BoolSetting redstone = add(new BoolSetting("Redstone", "Include hoppers, observers, droppers and pistons.", true));
+    private final BoolSetting ignoreStructures = add(new BoolSetting("IgnoreStructures", "Skip common blocks (beds, tables, furnaces, redstone) inside generated structures.", true));
     private final BoolSetting alert = add(new BoolSetting("Alert", "Chat + sound for new chunks with finds.", false));
     private final NumberSetting range = add(new NumberSetting("Range", "Max render distance.", 256, 16, 1024, 16));
     private final NumberSetting fill = add(new NumberSetting("FillAlpha", "Box fill opacity.", 50, 0, 255, 5));
 
     public SuspiciousESP() {
         super("Suspicious ESP", "Highlights blocks that only players place.", Category.BASEFINDING);
+    }
+
+    @Override
+    protected dev.loot.client.setting.Setting<?>[] rescanOn() {
+        return new dev.loot.client.setting.Setting<?>[]{undergroundY, redstone, ignoreStructures};
     }
 
     /** 0 when not suspicious, otherwise the color to draw it in. */
@@ -66,6 +72,10 @@ public class SuspiciousESP extends ChunkScanModule<List<SuspiciousESP.Find>> {
                         if (color != 0) out.add(new Find(new BlockPos(bx + x, by + y, bz + z), color));
                     }
         }
+        if (!out.isEmpty() && ignoreStructures.get() && Structures.detect(chunk) != null) {
+            // keep only things structures never generate (shulkers, beacons, valuables, anvils...)
+            out.removeIf(f -> f.color() == 0xFFFF7AC8 || f.color() == 0xFFFFD27A || f.color() == 0xFFFF7A7A);
+        }
         return out.isEmpty() ? null : out;
     }
 
@@ -73,8 +83,9 @@ public class SuspiciousESP extends ChunkScanModule<List<SuspiciousESP.Find>> {
     protected void onFound(ChunkPos pos, List<Find> finds) {
         if (!alert.get()) return;
         BlockPos p = finds.get(0).pos();
-        ChatUtil.coords(finds.size() + " suspicious blocks near", p.getX(), p.getY(), p.getZ());
-        ChatUtil.ping();
+        String what = mc.world.getBlockState(p).getBlock().getName().getString();
+        dev.loot.client.module.render.Notifications.found("Suspicious blocks", 0xC77DFF, p.getX(), p.getY(), p.getZ(),
+            finds.size() == 1 ? what : finds.size() + " blocks, first one " + what);
     }
 
     @Override

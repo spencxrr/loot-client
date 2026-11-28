@@ -17,6 +17,7 @@ public class AutoEat extends Module {
 
     private int prevSlot = -1;
     private boolean eating;
+    private int eatTicks;
 
     public AutoEat() {
         super("Auto Eat", "Eats when you get hungry.", Category.MISC);
@@ -39,7 +40,8 @@ public class AutoEat extends Module {
         boolean need = mc.player.getHungerManager().getFoodLevel() <= hunger.getInt()
             || (health.getInt() > 0 && mc.player.getHealth() <= health.getInt() && mc.player.getHungerManager().getFoodLevel() < 20);
         if (eating) {
-            if (!need || !edible(mc.player.getMainHandStack())) stop();
+            // give up if the server never let us start (or we got interrupted for good)
+            if (++eatTicks > 100 || !need || !edible(mc.player.getMainHandStack())) stop();
             else mc.options.useKey.setPressed(true);
             return;
         }
@@ -50,10 +52,11 @@ public class AutoEat extends Module {
         InvUtil.select(slot);
         mc.options.useKey.setPressed(true);
         eating = true;
+        eatTicks = 0;
     }
 
     private void stop() {
-        mc.options.useKey.setPressed(false);
+        dev.loot.client.util.KeyUtil.release(mc.options.useKey);
         if (prevSlot != -1) InvUtil.select(prevSlot);
         prevSlot = -1;
         eating = false;

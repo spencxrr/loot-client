@@ -28,6 +28,8 @@ abstract class WeaponSwap extends Module {
 
     @Override
     public boolean onAttack(Entity target) {
+        // crystals, boats and item frames aren't worth a weapon swap
+        if (!(target instanceof net.minecraft.entity.LivingEntity)) return false;
         if (isWeapon(mc.player.getMainHandStack()) || !shouldSwap(target)) return false;
         int slot = InvUtil.findHotbar(this::isWeapon);
         if (slot == -1) return false;
