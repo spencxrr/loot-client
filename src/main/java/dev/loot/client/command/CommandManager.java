@@ -35,7 +35,7 @@ public final class CommandManager {
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "help", "h" -> {
                 ChatUtil.info(".modules, .t <module>, .bind <module> <key|none>, .set <module> <setting> <value>,");
-                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [goto <n>|stop|export|clear], .save. Open the GUI with Right Shift.");
+                ChatUtil.info(".settings <module>, .friend add|remove <name>, .macro, .config, .bases [goto <n>|stop|export|clear], .lights, .save. Open the GUI with Right Shift.");
             }
             case "modules", "mods" -> ChatUtil.info(LootClient.modules().getModules().stream()
                 .map(m -> (m.isEnabled() ? "§a" : "§7") + m.getName())
@@ -108,6 +108,12 @@ public final class CommandManager {
                 } else {
                     bf.describeHits().forEach(ChatUtil::info);
                 }
+            }
+            case "lights", "light" -> {
+                var lf = LootClient.modules().get(dev.loot.client.module.basefinding.LightFinder.class);
+                var rows = lf.describeAreas();
+                if (rows.isEmpty()) ChatUtil.info("No lit areas found yet" + (lf.isEnabled() ? "." : " (Light Finder is off)."));
+                else rows.forEach(ChatUtil::info);
             }
             case "friend", "f" -> {
                 if (args.length < 2 || args[1].equalsIgnoreCase("list")) {

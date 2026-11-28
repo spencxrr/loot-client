@@ -770,8 +770,16 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
         }
     }
 
+    private int hudBottom = 86;
+
+    /** Bottom edge of the HUD list drawn this frame, so Light Finder can stack its list under it. */
+    public int hudBottom() {
+        return hudBottom;
+    }
+
     @Override
     public void onRenderHud(DrawContext ctx, float tickDelta) {
+        hudBottom = 86;
         if (mc.options.hudHidden || bases.isEmpty()) return;
         Vec3d me = mc.player.getLerpedPos(tickDelta);
         if (beams.get()) {
@@ -793,6 +801,7 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             Base t = target();
             int extra = t != null ? 10 : 0;
             int w = 160, x = 4, y = 90;
+            hudBottom = y + 16 + extra + near.size() * 10;
             UI.roundRect(ctx, x, y, x + w, y + 16 + extra + near.size() * 10, 5, Theme.SURFACE);
             UI.drawBold(ctx, "Bases", x + 6, y + 4, Theme.TEXT);
             UI.drawTextRight(ctx, String.valueOf(sorted.size()), x + w - 6, y + 4, Theme.ACCENT);
