@@ -6,6 +6,86 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Publishes a GitHub Release for every successful push to v2, with the jars
+  # attached as plain .jar assets (no zip). Asset names are fixed so
+  #   https://github.com/spencxrr/loot-client/releases/latest/download/loot-client-debug.jar
+  #   https://github.com/spencxrr/loot-client/releases/latest/download/loot-client.jar
+  # always point at the newest build. Releases are NOT marked prerelease on
+  # purpose: /releases/latest skips prereleases. mapping.txt is never attached.
+  # (Job is listed first only to keep merges with edits to the build job clean.)
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/v2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: gradle.properties
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          ls -R artifacts
+          mkdir -p dist
+          pick() { find "$1" -maxdepth 1 -name 'loot-client-*.jar' ! -name '*-dev.jar' ! -name '*-sources.jar' 2>/dev/null | head -1; }
+          # Readable debug jar: artifact "loot-client-debug" (obfuscation pipeline) or "loot-client" (plain build).
+          DEBUG=""
+          for d in artifacts/loot-client-debug artifacts/loot-client; do
+            [ -d "$d" ] && DEBUG=$(pick "$d") && [ -n "$DEBUG" ] && break
+          done
+          [ -n "$DEBUG" ] || { echo "::error::no debug jar found in artifacts"; exit 1; }
+          cp "$DEBUG" dist/loot-client-debug.jar
+          # Obfuscated release jar, only once the obfuscation pipeline produces it.
+          if [ -d artifacts/loot-client-release ]; then
+            REL=$(pick artifacts/loot-client-release)
+            [ -n "$REL" ] && cp "$REL" dist/loot-client.jar
+          fi
+          VERSION=$(grep -E '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          SHORT=${GITHUB_SHA::7}
+          echo "TAG=v${VERSION}-${SHORT}" >> "$GITHUB_ENV"
+          echo "TITLE=Loot Client ${VERSION}+${SHORT}" >> "$GITHUB_ENV"
+          ls -l dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Automatic build of \`v2\` at ${GITHUB_SHA}."
+            echo
+            if [ -f dist/loot-client.jar ]; then
+              echo "- **loot-client.jar**: obfuscated release build"
+            fi
+            echo "- **loot-client-debug.jar**: readable debug build"
+            echo
+            echo "Commit: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+            echo "CI run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > notes.md
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Re-run of the same commit: just refresh the assets.
+            gh release upload "$TAG" dist/*.jar --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/*.jar -R "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "$TITLE" --notes-file notes.md --latest
+          fi
+      - name: Prune old auto-build releases (keep newest 20, manual releases untouched)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9.]+-[0-9a-f]{7}$"))] | sort_by(.createdAt) | reverse | .[20:] | .[].tagName' |
+          while read -r t; do
+            gh release delete "$t" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          done
+
   build:
     runs-on: ubuntu-latest
     steps:
