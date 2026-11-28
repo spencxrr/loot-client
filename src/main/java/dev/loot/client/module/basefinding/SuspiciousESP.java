@@ -83,8 +83,9 @@ public class SuspiciousESP extends ChunkScanModule<List<SuspiciousESP.Find>> {
     protected void onFound(ChunkPos pos, List<Find> finds) {
         if (!alert.get()) return;
         BlockPos p = finds.get(0).pos();
-        ChatUtil.coords(finds.size() + " suspicious blocks near", p.getX(), p.getY(), p.getZ());
-        ChatUtil.ping();
+        String what = mc.world.getBlockState(p).getBlock().getName().getString();
+        dev.loot.client.module.render.Notifications.found("Suspicious blocks", 0xC77DFF, p.getX(), p.getY(), p.getZ(),
+            finds.size() == 1 ? what : finds.size() + " blocks, first one " + what);
     }
 
     @Override

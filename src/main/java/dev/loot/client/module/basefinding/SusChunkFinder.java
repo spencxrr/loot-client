@@ -605,11 +605,10 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
                 if (fresh && log.get()) writeLog(b);
                 if (alert.get() && (fresh || alertKnown.get())) {
                     Vec3d me = mc.player.getEntityPos();
-                    ChatUtil.coords((fresh ? "Possible base" : "Known base") + ": score " + b.score() + ", " + b.chunks().size()
-                        + (b.chunks().size() == 1 ? " chunk" : " chunks") + ", y " + b.minY() + " to " + b.maxY() + ", "
-                        + Math.round(b.distanceTo(me)) + "m " + direction(me, b) + " at", b.x(), b.minY(), b.z());
-                    ChatUtil.info(b.summary());
-                    ChatUtil.ping();
+                    dev.loot.client.module.render.Notifications.found(fresh ? "Possible base" : "Known base (logged before)", fresh ? 0xFF4D4D : 0xFF9A2E, b.x(), b.minY(), b.z(),
+                        "score " + b.score() + ", " + b.chunks().size() + (b.chunks().size() == 1 ? " chunk" : " chunks")
+                            + ", y " + b.minY() + " to " + b.maxY() + ", " + Math.round(b.distanceTo(me)) + "m " + direction(me, b),
+                        b.summary());
                 }
             } else {
                 alerted.addAll(b.chunks());
@@ -617,8 +616,8 @@ public class SusChunkFinder extends ChunkScanModule<SusChunkFinder.Hit> {
             if (b.score() >= strong && b.chunks().stream().noneMatch(alertedStrong::contains)) {
                 alertedStrong.addAll(b.chunks());
                 if (already && alert.get() && (fresh || alertKnown.get())) {
-                    ChatUtil.coords("Base confirmed, score now " + b.score() + " at", b.x(), b.minY(), b.z());
-                    ChatUtil.ping();
+                    dev.loot.client.module.render.Notifications.found("Base confirmed", 0xFF2E2E, b.x(), b.minY(), b.z(),
+                        "score now " + b.score() + ", " + b.chunks().size() + " chunks", b.summary());
                 }
             } else if (b.score() >= strong) {
                 alertedStrong.addAll(b.chunks());

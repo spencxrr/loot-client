@@ -188,9 +188,8 @@ public class NewChunks extends ChunkScanModule<Integer> {
                 maxZ = Math.max(maxZ, ChunkPos.getPackedZ(k));
             }
             String axis = Clusters.axis(group);
-            dev.loot.client.util.ChatUtil.coords("Trail of " + group.size() + " old chunks (" + axis + ") at",
-                ((minX + maxX) / 2 << 4) + 8, 64, ((minZ + maxZ) / 2 << 4) + 8);
-            dev.loot.client.util.ChatUtil.ping();
+            dev.loot.client.module.render.Notifications.found("Trail", 0x3DF5FF, ((minX + maxX) / 2 << 4) + 8, 64, ((minZ + maxZ) / 2 << 4) + 8,
+                group.size() + " old chunks through new terrain, heading " + axis);
         }
     }
 

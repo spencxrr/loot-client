@@ -86,6 +86,7 @@ public class ModuleManager {
         register(new dev.loot.client.module.render.Freecam());
         register(new dev.loot.client.module.render.Fullbright());
         register(new dev.loot.client.module.render.Hud());
+        register(new dev.loot.client.module.render.Notifications());
         register(new dev.loot.client.module.render.InventoryHud());
         register(new dev.loot.client.module.render.JumpCircles());
         register(new dev.loot.client.module.render.MobESP());

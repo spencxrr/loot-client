@@ -208,10 +208,9 @@ public class LightFinder extends ChunkScanModule<LightFinder.Result> {
             if (sus != null && sus.isEnabled() && a.chunks().stream().anyMatch(sus::alertedNear)) continue;
             if (!alert.get()) continue;
             Vec3d me = mc.player.getEntityPos();
-            ChatUtil.coords("Lit area: score " + a.score() + ", y " + a.minY() + " to " + a.maxY() + ", "
-                + Math.round(a.distanceTo(me)) + "m " + direction(me, a) + " at", a.x(), a.y(), a.z());
-            ChatUtil.info(a.summary());
-            ChatUtil.ping();
+            dev.loot.client.module.render.Notifications.found("Lit area", YELLOW, a.x(), a.y(), a.z(),
+                "score " + a.score() + ", y " + a.minY() + " to " + a.maxY() + ", " + Math.round(a.distanceTo(me)) + "m " + direction(me, a),
+                a.summary());
         }
     }
 

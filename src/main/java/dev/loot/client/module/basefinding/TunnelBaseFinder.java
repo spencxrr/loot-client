@@ -188,8 +188,8 @@ public class TunnelBaseFinder extends ChunkScanModule<List<TunnelBaseFinder.Tunn
         if (!alert.get()) return;
         Tunnel longest = tunnels.stream().max(Comparator.comparingInt(Tunnel::length)).orElse(tunnels.get(0));
         BlockPos p = longest.start();
-        ChatUtil.coords("Tunnel (" + longest.length() + " long) at", p.getX(), p.getY(), p.getZ());
-        ChatUtil.ping();
+        String more = tunnels.size() > 1 ? ", " + tunnels.size() + " tunnels in this chunk" : "";
+        dev.loot.client.module.render.Notifications.found("Tunnel", 0x7AD7FF, p.getX(), p.getY(), p.getZ(), longest.length() + " blocks long, y " + p.getY() + more);
     }
 
     @Override
